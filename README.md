@@ -5,7 +5,7 @@ This application will ingest your computers webcam feed (using ffmpeg), apply an
 You can deploy with docker:
 ```bash
 docker build -t holly-stream .
-docker run -it --rm --net=host --device=/mnt/video0:/mnt/video0  holly-stream:latest
+docker run -it --rm --net=host --device=/dev/video0:/dev/video0  holly-stream:latest
 ```
 
 Or deploy in your own python environment:
