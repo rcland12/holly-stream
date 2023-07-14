@@ -10,7 +10,12 @@ docker run -it --rm --net=host --device=/dev/video0:/dev/video0  holly-stream:la
 
 Or deploy in your own python environment:
 ```bash
+# install prerequisites
+sudo apt update
+sudo apt install ffmpeg
 pip install -r requirements.txt
+
+# run app
 python main.py
 ```
 
@@ -24,7 +29,7 @@ python main.py \
 --capture_index 0 \
 --model yolov8n.pt
 ```
-- Each argument can also be abbreviated (`--ip` can be just `-i-`, etc.).
+- Each argument can also be abbreviated (`--ip` can be just `-i`, etc.).
 - If you are hosting a live stream on a website you can send the feed to your web servers external IP address.
 - The default port for FTMP video streams is 1935. If for some reason yours is different you can change it here.
 - The application name is something that can be configured on server side. For instance, if you are using Nginx on your server side, the application name is defined in the nginx.conf.
