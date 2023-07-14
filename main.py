@@ -10,8 +10,8 @@ from predict import *
 
 def main(ip_address, port, application, stream_key, capture_index, model):
 	# set up object detection model, classes, and annotator
-	model, classes = load_model_classes(model)
-	box_annotator = BoxAnnotator(color=ColorPalette.default(), thickness=2, text_thickness=2, text_scale=1.5)
+	model = load_model_classes(model)
+	box_annotator = BoxAnnotator(color=ColorPalette.default(), thickness=2)
 
 	# set up stream parameters
 	rtmp_url = "rtmp://{}:{}/{}/{}".format(
@@ -52,7 +52,7 @@ def main(ip_address, port, application, stream_key, capture_index, model):
 			break
 
 		results = model.predict(frame, classes=16)
-		frame = plot_bboxes(results, frame, classes, box_annotator)
+		frame = plot_bboxes(results, frame, box_annotator)
 
 		p.stdin.write(frame.tobytes())
 
