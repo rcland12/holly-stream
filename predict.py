@@ -2,7 +2,10 @@ from ultralytics import YOLO
 from supervision import Detections
 
 
-def load_model_classes(model):
+#
+# skips classes and labels
+#
+def load_model(model):
 	model = YOLO(model)
 	model.fuse()
 	return model
@@ -18,11 +21,14 @@ def plot_bboxes(results, frame, box_annotator):
 		xyxy = results[0].boxes.xyxy.cpu().numpy()
 	)
 
-	frame = box_annotator.annotate(scene=frame, detections=detections)
+	frame = box_annotator.annotate(scene=frame, detections=detections, skip_label=True)
 	return frame
 
 
-# def load_model_classes(model):
+#
+# includes classes and labels
+#
+# def load_model(model):
 # 	model = YOLO(model)
 # 	model.fuse()
 # 	classes = model.model.names
