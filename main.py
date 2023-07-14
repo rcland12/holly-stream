@@ -11,7 +11,7 @@ from predict import *
 def main(ip_address, port, application, stream_key, capture_index, model):
 	# set up object detection model, classes, and annotator
 	model, classes = load_model_classes(model)
-	box_annotator = BoxAnnotator(color="#EE4B2B", thickness=2, text_thickness=2, text_scale=1.5)
+	box_annotator = BoxAnnotator(color=ColorPalette.default(), thickness=2, text_thickness=2, text_scale=1.5)
 
 	# set up stream parameters
 	rtmp_url = "rtmp://{}:{}/{}/{}".format(
@@ -51,7 +51,7 @@ def main(ip_address, port, application, stream_key, capture_index, model):
 			print("Frame read failed")
 			break
 
-		results = model(frame)
+		results = model.predict(frame, classes=16)
 		frame = plot_bboxes(results, frame, classes, box_annotator)
 
 		p.stdin.write(frame.tobytes())
