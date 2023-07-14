@@ -10,7 +10,7 @@ from predict import *
 
 def main(ip_address, port, application, stream_key, capture_index, model):
 	# set up object detection model, classes, and annotator
-	model = load_model_classes(model)
+	model = load_model(model)
 	box_annotator = BoxAnnotator(color=ColorPalette.default(), thickness=2)
 
 	# set up stream parameters
