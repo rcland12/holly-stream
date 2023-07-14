@@ -8,7 +8,6 @@ from supervision import Detections
 def load_model(model):
 	model = YOLO(model)
 	model.fuse()
-	print(model.model.names)
 	return model
 
 
