@@ -51,7 +51,7 @@ def main(ip_address, port, application, stream_key, capture_index, model):
 			print("Frame read failed")
 			break
 
-		results = model.predict(frame, classes=16)
+		results = model.predict(frame, classes=16, verbose=False)
 		frame = plot_bboxes(results, frame, box_annotator)
 
 		p.stdin.write(frame.tobytes())
