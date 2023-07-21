@@ -1,3 +1,5 @@
+import torch
+
 from ultralytics import YOLO
 from supervision import Detections
 
@@ -8,7 +10,8 @@ from supervision import Detections
 def load_model(model):
 	model = YOLO(model)
 	model.fuse()
-	return model
+	device = "cuda" if torch.cuda.is_available() else "cpu"
+	return model, device
 
 
 def plot_bboxes(results, frame, box_annotator):

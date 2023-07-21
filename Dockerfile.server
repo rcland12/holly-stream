@@ -1,9 +1,9 @@
-FROM ultralytics/ultralytics:latest-cpu
+FROM nvcr.io/nvidia/l4t-pytorch:r35.2.1-pth2.0-py3
 WORKDIR /home/holly
 COPY main.py predict.py ./
 
 RUN apt update && \
     apt install -y ffmpeg && \
-    pip install supervision py-cpuinfo
+    pip install ultralytics supervision
 
 CMD ["python3", "main.py", "--ip", "34.148.117.56", "--port", "1935", "--application", "live", "--stream_key", "hollyvideostream", "--capture_index", "0", "--model", "yolov8n.pt"]

@@ -10,7 +10,7 @@ from predict import *
 
 def main(ip_address, port, application, stream_key, capture_index, model):
 	# set up object detection model, classes, and annotator
-	model = load_model(model)
+	model, device = load_model(model)
 	box_annotator = BoxAnnotator(color=ColorPalette.default(), thickness=2)
 
 	# set up stream parameters
@@ -51,7 +51,7 @@ def main(ip_address, port, application, stream_key, capture_index, model):
 			print("Frame read failed")
 			break
 
-		results = model.predict(frame, classes=16, verbose=False)
+		results = model.predict(frame, classes=16, device=device, verbose=False)
 		frame = plot_bboxes(results, frame, box_annotator)
 
 		p.stdin.write(frame.tobytes())
