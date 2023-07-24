@@ -37,7 +37,7 @@ def gstreamer_pipeline(
 def main(model_path):
     assets = Assets()
     model = ObjectDetection(model_path)
-    print(gstreamer_pipeline(flip_method=0))
+
     cap = cv2.VideoCapture(gstreamer_pipeline(flip_method=0), cv2.CAP_GSTREAMER)
     if cap.isOpened():
         window_handle = cv2.namedWindow("CSI Camera", cv2.WINDOW_AUTOSIZE)
@@ -51,8 +51,8 @@ def main(model_path):
                     score = obj['conf']
                     xmin, ymin, xmax, ymax = obj['bbox']
                     color = assets.colors[assets.classes.index(label)]
-                    frame = cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2) 
-                    frame = cv2.putText(frame, f'{label} ({str(score)})', (xmin,ymin), cv2.FONT_HERSHEY_SIMPLEX , 0.75, color, 1, cv2.LINE_AA)
+                    frame = cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), color, 2) 
+                    frame = cv2.putText(frame, f'{label} ({str(score)})', (xmin, ymin), cv2.FONT_HERSHEY_SIMPLEX , 0.75, color, 1, cv2.LINE_AA)
 
             cv2.imshow("CSI Camera", frame)
             keyCode = cv2.waitKey(30)

@@ -12,14 +12,7 @@ from utilities import (
 
 class ObjectDetection():
     def __init__(self, model, img_shape=(640, 640), confidence_threshold=0.3, iou_threshold=0.1):
-        if torch.cuda.is_available():
-            self.device = torch.device("cuda")
-            print(self.device)
-            self.fp16 = False
-        else:
-            self.device = torch.device("cpu")
-            self.fp16 = False
-
+        self.device, self.fp16 = "cuda", True if torch.cuda.is_available() else "cpu", False
         self.model = attempt_load(weights=model, device=self.device)
         self.classes = self.model.names
         self.img_shape = img_shape
@@ -28,13 +21,11 @@ class ObjectDetection():
         self.stride = 32
 
     def __call__(self, frame):
-        height, width = frame.shape[:2]
         img0 = frame[:, :, ::-1].copy()
         img = letterbox(img0, new_shape=self.img_shape, stride=self.stride, auto=True)[0]
         img = img.transpose((2, 0, 1))[::-1]
         img = numpy.ascontiguousarray(img)
-        img = torch.from_numpy(img).to("cuda")
-        # img = torch.from_numpy(img)
+        img = torch.from_numpy(img).to(self.device)
         img = img.half() if self.fp16 else img.float()
         img /= 255
         if len(img.shape) == 3:
