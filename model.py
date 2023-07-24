@@ -12,7 +12,13 @@ from utilities import (
 
 class ObjectDetection():
     def __init__(self, model, img_shape=(640, 640), confidence_threshold=0.3, iou_threshold=0.1):
-        self.device, self.fp16 = "cuda", True if torch.cuda.is_available() else "cpu", False
+        if torch.cuda.is_available():
+            self.device = "cuda"
+            self.fp16 = True
+        else:
+            self.device = "cpu"
+            self.fp16 = False
+
         self.model = attempt_load(weights=model, device=self.device)
         self.classes = self.model.names
         self.img_shape = img_shape
