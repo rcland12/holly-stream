@@ -1,0 +1,106 @@
+# example curl command
+# curl \
+# -F "img1=@docker/input/Vegas.png" \
+# -F "img2=@docker/input/Sawgrass.png" \
+# -F "img3=@docker/input/RAFB.png" \
+# http://localhost:5000/results?conf=0.5&iou=0.4&img=1024
+
+import io
+import os
+import sys
+import json
+import torch
+import argparse
+import numpy as np
+
+from utilities import (attempt_load, letterbox, scale_coords, non_max_suppression, normalize_boxes)
+
+from PIL import Image
+from flask import Flask, request
+
+
+app = Flask(__name__)
+
+@app.route("/results", methods=["POST"])
+def predict():
+    if request.method != "POST":
+        return "Method was not POST"
+    
+    models = paths_dict["models"]
+    
+    dictionary = {}
+    if len(models) and request.files:
+        
+        images = {}
+        for i in request.files:
+            img = request.files.get(i)
+            images[i] = img.read()
+        
+        args = request.args
+        CONF = args.get("conf", default=0.6, type=float)
+        IOU = args.get("iou", default=0.1, type=float)
+        IMG = args.get("img", default=640, type=int)
+        
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+            fp16 = True
+        else:
+            device = torch.device("cpu")
+            fp16 = False
+        
+        model = attempt_load(models, device=device)
+        stride = max(int(model.stride.max()), 32)
+        model.half() if fp16 else model.float()
+        classes = model.names
+        
+        index = 0
+        for i in request.files:
+            im_bytes = images[i]
+            pil_img = Image.open(io.BytesIO(im_bytes)).convert("RGB")
+            open_cv_image = np.array(pil_img)
+            img0 = open_cv_image[:, :, ::-1].copy()
+            img = letterbox(img0, new_shape=IMG, stride=stride, auto=True)[0]
+            img = img.transpose((2, 0, 1))[::-1]
+            img = np.ascontiguousarray(img)
+            img = torch.from_numpy(img).to(device)
+            img = img.half() if fp16 else img.float()
+            img /= 255
+            if len(img.shape) == 3:
+                img = img[None,:,:,:]
+            
+            results = model(img, augment=True)[0]
+            preds = non_max_suppression(results, conf_thres=CONF, iou_thres=IOU)[0]
+            preds[:, :4] = scale_coords(img.shape[2:], preds[:, :4], img0.shape).round()
+            
+            height, width = img0.shape[:2]
+            bboxes = [normalize_boxes(item[:4], width, height) for item in preds]
+            conf = [float(item[4]) for item in preds]
+            obj = [int(item[5]) for item in preds]
+            names = [classes[item] for item in obj]
+            
+            if len(bboxes):
+                for j in range(len(bboxes)):
+                    dictionary[index] = {"bboxes": bboxes[j],
+                                         "conf": conf[j],
+                                         "obj": obj[j],
+                                         "name": names[j],
+                                         "image_id": i
+                                        }
+                    index += 1
+        
+        # with open("inference/output/results.json", "w") as f:
+        #     json.dump(dictionary, f)
+
+        return json.dumps(dictionary)
+    
+    else:
+        return "Something went wrong. Either no model or image inputs"
+    
+    
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Flask API exposing models for inferencing.")
+    parser.add_argument("-p", "--port", default=5000, type=int, help="Port number.")
+    parser.add_argument("-m", "--models", default="", nargs = "*", type=str, help="Path to model(s).")
+    args = parser.parse_args()
+    paths_dict = vars(args)
+    app.run(host="0.0.0.0", port=paths_dict["port"])
