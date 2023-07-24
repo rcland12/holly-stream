@@ -14,6 +14,7 @@ class ObjectDetection():
     def __init__(self, model, img_shape=(640, 480), confidence_threshold=0.3, iou_threshold=0.1):
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
+            print(self.device)
             self.fp16 = True
         else:
             self.device = torch.device("cpu")
