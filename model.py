@@ -15,7 +15,7 @@ class ObjectDetection():
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
             print(self.device)
-            self.fp16 = True
+            self.fp16 = False
         else:
             self.device = torch.device("cpu")
             self.fp16 = False
