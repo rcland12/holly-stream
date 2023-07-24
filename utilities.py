@@ -10,6 +10,7 @@ from models.common import Ensemble
 def normalize_boxes(bbox, width, height):
     return [float(bbox[0])/width, float(bbox[1])/height, float(bbox[2])/width, float(bbox[3])/height]
 
+
 def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
     shape = im.shape[:2]
     if isinstance(new_shape, int):
@@ -39,6 +40,7 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleF
     im = cv.copyMakeBorder(im, top, bottom, left, right, cv.BORDER_CONSTANT, value=color)
     return im, ratio, (dw, dh)
 
+
 def attempt_load(weights, device=None, inplace=True, fuse=True):
     model = Ensemble()
     for w in weights if isinstance(weights, list) else [weights]:
@@ -55,6 +57,7 @@ def attempt_load(weights, device=None, inplace=True, fuse=True):
     model.stride = model[torch.argmax(torch.tensor([m.stride.max() for m in model])).int()].stride
     assert all(model[0].nc == m.nc for m in model), f"Models have different class counts: {[m.nc for m in model]}"
     return model
+
 
 def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
     if ratio_pad is None:
@@ -78,6 +81,7 @@ def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
         coords[:, [1, 3]] = coords[:, [1, 3]].clip(0, img0_shape[0])
     return coords
 
+
 def xywh2xyxy(x):
     y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
     y[:, 0] = x[:, 0] - x[:, 2] / 2
@@ -86,13 +90,16 @@ def xywh2xyxy(x):
     y[:, 3] = x[:, 1] + x[:, 3] / 2
     return y
 
+
 def box_area(box):
     return (box[2] - box[0]) * (box[3] - box[1])
+
 
 def box_iou(box1, box2, eps=1e-7):
     (a1, a2), (b1, b2) = box1[:, None].chunk(2, 2), box2.chunk(2, 1)
     inter = (torch.min(a2, b2) - torch.max(a1, b1)).clamp(0).prod(2)
     return inter / (box_area(box1.T)[:, None] + box_area(box2.T) - inter + eps)
+
 
 def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=None, agnostic=False, multi_label=False, labels=(), max_det=300):
     bs = prediction.shape[0]

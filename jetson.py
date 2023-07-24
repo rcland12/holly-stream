@@ -17,7 +17,7 @@ from PIL import Image
 # from supervision import BoxAnnotator
 # from supervision.draw.color import ColorPalette
 
-from predict import *
+from plotting import *
 
 
 def main(ip_address, port, application, stream_key, capture_index, model):

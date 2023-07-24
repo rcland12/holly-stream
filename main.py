@@ -1,77 +1,79 @@
+import cv2
 import argparse
-import cv2 as cv
-import subprocess
+import numpy as np
 
-from supervision import BoxAnnotator
-from supervision.draw.color import ColorPalette
-
-from predict import *
+from assets import Assets
+from model import ObjectDetection
 
 
-def main(ip_address, port, application, stream_key, capture_index, model):
-	# set up object detection model, classes, and annotator
-	model, device = load_model(model)
-	box_annotator = BoxAnnotator(color=ColorPalette.default(), thickness=2)
+def gstreamer_pipeline(
+    capture_width=1280,
+    capture_height=720,
+    display_width=640,
+    display_height=480,
+    framerate=30,
+    flip_method=0,
+):
+    return (
+        "nvarguscamerasrc ! "
+        "video/x-raw(memory:NVMM), "
+        "width=(int)%d, height=(int)%d, "
+        "format=(string)NV12, framerate=(fraction)%d/1 ! "
+        "nvvidconv flip-method=%d ! "
+        "video/x-raw, width=(int)%d, height=(int)%d, format=(string)BGRx ! "
+        "videoconvert ! "
+        "video/x-raw, format=(string)BGR ! appsink"
+        % (
+            capture_width,
+            capture_height,
+            framerate,
+            flip_method,
+            display_width,
+            display_height,
+        )
+    )
 
-	# set up stream parameters
-	rtmp_url = "rtmp://{}:{}/{}/{}".format(
-		ip_address,
-		port,
-		application,
-		stream_key
-	)
 
-	cap = cv.VideoCapture(capture_index)
+def main(model_path):
+    assets = Assets()
+    model = ObjectDetection(model_path)
+    print(gstreamer_pipeline(flip_method=0))
+    cap = cv2.VideoCapture(gstreamer_pipeline(flip_method=0), cv2.CAP_GSTREAMER)
+    if cap.isOpened():
+        window_handle = cv2.namedWindow("CSI Camera", cv2.WINDOW_AUTOSIZE)
+        while cv2.getWindowProperty("CSI Camera", 0) >= 0:
+            ret, frame = cap.read()
+            if ret:
+                objs = model(frame)
 
-	fps = int(cap.get(cv.CAP_PROP_FPS))
-	width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
-	height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+                for obj in objs:
+                    label = obj['name']
+                    score = obj['conf']
+                    xmin, ymin, xmax, ymax = obj['bbox']
+                    color = assets.colors[assets.classes.index(label)]
+                    frame = cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2) 
+                    frame = cv2.putText(frame, f'{label} ({str(score)})', (xmin,ymin), cv2.FONT_HERSHEY_SIMPLEX , 0.75, color, 1, cv2.LINE_AA)
 
-	command = [
-		'ffmpeg',
-		'-y',
-		'-f', 'rawvideo',
-		'-vcodec', 'rawvideo',
-		'-pix_fmt', 'bgr24',
-		'-s', "{}x{}".format(width, height),
-		'-r', str(fps),
-		'-i', '-',
-		'-c:v', 'libx264',
-		'-pix_fmt', 'yuv420p',
-		'-preset', 'ultrafast', 
-		'-f', 'flv',
-		rtmp_url
-	]
-
-	p = subprocess.Popen(command, stdin=subprocess.PIPE)
-
-	while cap.isOpened():
-		ret, frame = cap.read()
-		if not ret:
-			print("Frame read failed")
-			break
-
-		results = model.predict(frame, classes=16, device=device, verbose=False)
-		frame = plot_bboxes(results, frame, box_annotator)
-
-		p.stdin.write(frame.tobytes())
+            cv2.imshow("CSI Camera", frame)
+            keyCode = cv2.waitKey(30)
+            if keyCode == ord('q'):
+                break
+        cap.release()
+        cv2.destroyAllWindows()
+    else:
+        print("Unable to open camera")
 
 
 if __name__ == "__main__":
-	parser = argparse.ArgumentParser(description="Flask API exposing models for inferencing.")
-	parser.add_argument("-i", "--ip", default="127.0.0.1", type=str, help="IP address for stream.")
-	parser.add_argument("-p", "--port", default=1935, type=str, help="Port for rtmp stream. Standard is 1935.")
-	parser.add_argument("-a", "--application", default="live", type=str, help="Application name for server side.")
-	parser.add_argument("-k", "--stream_key", default="stream", type=str, help="Stream key for security purposes.")
-	parser.add_argument("-c", "--capture_index", default=0, type=int, help="Stream capture index. Most webcams are 0.")
-	parser.add_argument("-m", "--model", default="yolov8n.pt", type=str, help="Model to use. YOLO or local custom trained model.")
-	args = parser.parse_args()
-
-	main(
-		args.ip,
-		args.port,
-		args.application,
-		args.stream_key,
-		args.capture_index,
-		args.model
-	)
+    parser = argparse.ArgumentParser(description="Flask API exposing models for inferencing.")
+    parser.add_argument("-i", "--ip", default="127.0.0.1", type=str, help="IP address for stream.")
+    parser.add_argument("-p", "--port", default=1935, type=str, help="Port for rtmp stream. Standard is 1935.")
+    parser.add_argument("-a", "--application", default="live", type=str, help="Application name for server side.")
+    parser.add_argument("-k", "--stream_key", default="stream", type=str, help="Stream key for security purposes.")
+    parser.add_argument("-c", "--capture_index", default=0, type=int, help="Stream capture index. Most webcams are 0.")
+    parser.add_argument("-m", "--model", default="yolov8n.pt", type=str, help="Model to use. YOLO or local custom trained model.")
+    args = parser.parse_args()
+    
+    main(
+        args.model
+    )
