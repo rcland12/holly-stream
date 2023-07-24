@@ -29,7 +29,7 @@ def main(ip_address, port, application, stream_key, capture_index, model):
 	else:
 		device = torch.device("cpu")
 		fp16 = False
-    
+
 	model = attempt_load(model, device=device)
 	stride = max(int(model.stride.max()), 32)
 	model.half() if fp16 else model.float()
@@ -73,7 +73,7 @@ def main(ip_address, port, application, stream_key, capture_index, model):
 			print("Frame read failed")
 			break
 
-		print(type(frame))     
+		print(type(frame))
 		# pil_img = Image.open(io.BytesIO(im_bytes)).convert("RGB")
 		# open_cv_image = np.array(pil_img)
 		# img0 = open_cv_image[:, :, ::-1].copy()
@@ -85,12 +85,11 @@ def main(ip_address, port, application, stream_key, capture_index, model):
 		# img /= 255
 		# if len(img.shape) == 3:
 		# 	img = img[None,:,:,:]
-        
+
 		# results = model.predict(frame, classes=16, device=device, verbose=False)
 		results = model(img, augment=True)[0]
-        print(results)
-        frame = plot_bboxes(results, frame, box_annotator)
-        
+		print(results)
+		frame = plot_bboxes(results, frame, box_annotator)
 		p.stdin.write(frame.tobytes())
 
 
@@ -112,40 +111,40 @@ if __name__ == "__main__":
 		args.capture_index,
 		args.model
 	)
-        
+
 
 # @app.route("/results", methods=["POST"])
 # def predict():
 #     if request.method != "POST":
 #         return "Method was not POST"
-    
+
 #     models = paths_dict["models"]
-    
+
 #     dictionary = {}
 #     if len(models) and request.files:
-        
+
 #         images = {}
 #         for i in request.files:
 #             img = request.files.get(i)
 #             images[i] = img.read()
-        
+
 #         args = request.args
 #         CONF = args.get("conf", default=0.6, type=float)
 #         IOU = args.get("iou", default=0.1, type=float)
 #         IMG = args.get("img", default=640, type=int)
-        
+
 #         if torch.cuda.is_available():
 #             device = torch.device("cuda")
 #             fp16 = True
 #         else:
 #             device = torch.device("cpu")
 #             fp16 = False
-        
+
 #         model = attempt_load(models, device=device)
 #         stride = max(int(model.stride.max()), 32)
 #         model.half() if fp16 else model.float()
 #         classes = model.names
-        
+
 #         index = 0
 #         for i in request.files:
 #             im_bytes = images[i]
@@ -160,17 +159,17 @@ if __name__ == "__main__":
 #             img /= 255
 #             if len(img.shape) == 3:
 #                 img = img[None,:,:,:]
-            
+
 #             results = model(img, augment=True)[0]
 #             preds = non_max_suppression(results, conf_thres=CONF, iou_thres=IOU)[0]
 #             preds[:, :4] = scale_coords(img.shape[2:], preds[:, :4], img0.shape).round()
-            
+
 #             height, width = img0.shape[:2]
 #             bboxes = [normalize_boxes(item[:4], width, height) for item in preds]
 #             conf = [float(item[4]) for item in preds]
 #             obj = [int(item[5]) for item in preds]
 #             names = [classes[item] for item in obj]
-            
+
 #             if len(bboxes):
 #                 for j in range(len(bboxes)):
 #                     dictionary[index] = {"bboxes": bboxes[j],
@@ -180,11 +179,11 @@ if __name__ == "__main__":
 #                                          "image_id": i
 #                                         }
 #                     index += 1
-        
+
 #         # with open("inference/output/results.json", "w") as f:
 #         #     json.dump(dictionary, f)
 
 #         return json.dumps(dictionary)
-    
+
 #     else:
 #         return "Something went wrong. Either no model or image inputs"
