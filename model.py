@@ -1,5 +1,5 @@
 import torch
-import numpy as np
+import numpy
 
 from utilities import (
     attempt_load,
@@ -11,7 +11,7 @@ from utilities import (
 
 
 class ObjectDetection():
-    def __init__(self, model, img_shape=(640, 480), confidence_threshold=0.3, iou_threshold=0.1):
+    def __init__(self, model, img_shape=(640, 640), confidence_threshold=0.3, iou_threshold=0.1):
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
             print(self.device)
@@ -32,9 +32,9 @@ class ObjectDetection():
         img0 = frame[:, :, ::-1].copy()
         img = letterbox(img0, new_shape=self.img_shape, stride=self.stride, auto=True)[0]
         img = img.transpose((2, 0, 1))[::-1]
-        img = np.ascontiguousarray(img)
-        # img = torch.from_numpy(img).to(self.device)
-        img = torch.from_numpy(img)
+        img = numpy.ascontiguousarray(img)
+        img = torch.from_numpy(img).to("cuda")
+        # img = torch.from_numpy(img)
         img = img.half() if self.fp16 else img.float()
         img /= 255
         if len(img.shape) == 3:
