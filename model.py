@@ -33,7 +33,8 @@ class ObjectDetection():
         img = letterbox(img0, new_shape=self.img_shape, stride=self.stride, auto=True)[0]
         img = img.transpose((2, 0, 1))[::-1]
         img = np.ascontiguousarray(img)
-        img = torch.from_numpy(img).to(self.device)
+        # img = torch.from_numpy(img).to(self.device)
+        img = torch.from_numpy(img)
         img = img.half() if self.fp16 else img.float()
         img /= 255
         if len(img.shape) == 3:
