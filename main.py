@@ -71,7 +71,7 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--application", default="live", type=str, help="Application name for server side.")
     parser.add_argument("-k", "--stream_key", default="stream", type=str, help="Stream key for security purposes.")
     parser.add_argument("-c", "--capture_index", default=0, type=int, help="Stream capture index. Most webcams are 0.")
-    parser.add_argument("-m", "--model", default="yolov8n.pt", type=str, help="Model to use. YOLO or local custom trained model.")
+    parser.add_argument("-m", "--model", default="weights/yolov5n.pt", type=str, help="Model to use. YOLO or local custom trained model.")
     args = parser.parse_args()
     
     main(
