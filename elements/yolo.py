@@ -29,7 +29,7 @@ class OBJ_DETECTION():
         preds = non_max_suppression(preds, conf_thres=0.25, iou_thres=0.45, classes=None)
         items = []
         
-        if preds[0] is not None and len(pred):
+        if preds[0] is not None and len(preds):
             for pred in preds[0]:
                 # score = np.round(pred[4].cpu().detach().numpy(), 2)
                 label = self.classes[int(pred[5])]
