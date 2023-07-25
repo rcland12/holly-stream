@@ -38,7 +38,8 @@ from elements.yolo import OBJ_DETECTION
 
 def main(model_path):
     assets = Assets()
-    model = ObjectDetection(model_path)
+    # model = ObjectDetection(model_path)
+    model = OBJ_DETECTION(model_path, assets.classes)
 
     #cap = cv2.VideoCapture(gstreamer_pipeline(flip_method=0), cv2.CAP_GSTREAMER)
     camera = nano.Camera(flip=0, width=640, height=480, fps=30)
@@ -46,10 +47,9 @@ def main(model_path):
     while camera.isReady():
         try:
             frame = camera.read()
-            if frame:
-                print("frame exists")
+            print(frame)
             # objs = model(frame)
-            objs = OBJ_DETECTION.detect(main_img=frame)
+            objs = model.detect(main_img=frame)
 
             for obj in objs:
                 label = obj['label']
