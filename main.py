@@ -1,67 +1,69 @@
 import cv2
 import argparse
 import numpy as np
+import nanocamera as nano
 
 from assets import Assets
 from model import ObjectDetection
 
 
-def gstreamer_pipeline(
-    capture_width=1280,
-    capture_height=720,
-    display_width=640,
-    display_height=480,
-    framerate=30,
-    flip_method=0,
-):
-    return (
-        "nvarguscamerasrc ! "
-        "video/x-raw(memory:NVMM), "
-        "width=(int)%d, height=(int)%d, "
-        "format=(string)NV12, framerate=(fraction)%d/1 ! "
-        "nvvidconv flip-method=%d ! "
-        "video/x-raw, width=(int)%d, height=(int)%d, format=(string)BGRx ! "
-        "videoconvert ! "
-        "video/x-raw, format=(string)BGR ! appsink"
-        % (
-            capture_width,
-            capture_height,
-            framerate,
-            flip_method,
-            display_width,
-            display_height,
-        )
-    )
+#def gstreamer_pipeline(
+#    capture_width=1280,
+#    capture_height=720,
+#    display_width=640,
+#    display_height=480,
+#    framerate=30,
+#    flip_method=0,
+#):
+#    return (
+#        "nvarguscamerasrc ! "
+#        "video/x-raw(memory:NVMM), "
+#        "width=(int)%d, height=(int)%d, "
+#        "format=(string)NV12, framerate=(fraction)%d/1 ! "
+#        "nvvidconv flip-method=%d ! "
+#        "video/x-raw, width=(int)%d, height=(int)%d, format=(string)BGRx ! "
+#        "videoconvert ! "
+#        "video/x-raw, format=(string)BGR ! appsink"
+#        % (
+#            capture_width,
+#            capture_height,
+#            framerate,
+#            flip_method,
+#            display_width,
+#            display_height,
+#        )
+#    )
 
 
 def main(model_path):
     assets = Assets()
     model = ObjectDetection(model_path)
 
-    cap = cv2.VideoCapture(gstreamer_pipeline(flip_method=0), cv2.CAP_GSTREAMER)
-    if cap.isOpened():
-        window_handle = cv2.namedWindow("CSI Camera", cv2.WINDOW_AUTOSIZE)
-        while cv2.getWindowProperty("CSI Camera", 0) >= 0:
-            ret, frame = cap.read()
-            if ret:
-                objs = model(frame)
+    #cap = cv2.VideoCapture(gstreamer_pipeline(flip_method=0), cv2.CAP_GSTREAMER)
+    camera = nano.Camera(flip=0, width=640, height=480, fps=30)
+    print('CSI Camera Ready? -', camera.isReady())
+    while camera.isReady():
+        try:
+            frame = camera.read()
+            
+            objs = model(frame)
 
-                for obj in objs:
-                    label = obj['name']
-                    score = obj['conf']
-                    xmin, ymin, xmax, ymax = obj['bbox']
-                    color = assets.colors[assets.classes.index(label)]
-                    frame = cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), color, 2) 
-                    frame = cv2.putText(frame, f'{label} ({str(score)})', (xmin, ymin), cv2.FONT_HERSHEY_SIMPLEX , 0.75, color, 1, cv2.LINE_AA)
+            for obj in objs:
+                label = obj['name']
+                score = obj['conf']
+                xmin, ymin, xmax, ymax = obj['bbox']
+                color = assets.colors[assets.classes.index(label)]
+                frame = cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), color, 2) 
+                frame = cv2.putText(frame, f'{label} ({str(score)})', (xmin, ymin), cv2.FONT_HERSHEY_SIMPLEX , 0.75, color, 1, cv2.LINE_AA)
 
-            cv2.imshow("CSI Camera", frame)
-            keyCode = cv2.waitKey(30)
-            if keyCode == ord('q'):
+            cv2.imshow("video frame", frame)
+            if cv2.waitKey(25) & 0xFF == ord('q'):
                 break
-        cap.release()
-        cv2.destroyAllWindows()
-    else:
-        print("Unable to open camera")
+
+        except KeyboardInterrupt:
+            break
+    cap.release()
+    cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
