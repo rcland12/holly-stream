@@ -5,7 +5,6 @@ import nanocamera as nano
 
 from assets import Assets
 from model import ObjectDetection
-from elements.yolo import OBJ_DETECTION
 
 
 #def gstreamer_pipeline(
@@ -38,8 +37,7 @@ from elements.yolo import OBJ_DETECTION
 
 def main(model_path):
     assets = Assets()
-    # model = ObjectDetection(model_path)
-    model = OBJ_DETECTION(model_path, assets.classes)
+    model = ObjectDetection(model_path)
 
     #cap = cv2.VideoCapture(gstreamer_pipeline(flip_method=0), cv2.CAP_GSTREAMER)
     camera = nano.Camera(flip=0, width=640, height=480, fps=30)
