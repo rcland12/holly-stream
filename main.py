@@ -47,13 +47,12 @@ def main(model_path):
     while camera.isReady():
         try:
             frame = camera.read()
-            print(frame)
             # objs = model(frame)
             objs = model.detect(main_img=frame)
 
             for obj in objs:
                 label = obj['label']
-                score = obj['score']
+                # score = obj['score']
                 xmin, ymin, xmax, ymax = obj['bbox']
                 color = assets.colors[assets.classes.index(label)]
                 frame = cv2.rectangle(
