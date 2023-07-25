@@ -35,7 +35,7 @@ class OBJ_DETECTION():
                 label = self.classes[int(pred[5])]
                 xmin = int(pred[0] * width / self.new_width)
                 ymin = int(pred[1] * height / new_height)
-                xmax = int(pred[2] * width / self.new__width)
+                xmax = int(pred[2] * width / self.new_width)
                 ymax = int(pred[3] * height / new_height)
 
                 item = {
