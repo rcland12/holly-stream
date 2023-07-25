@@ -46,9 +46,10 @@ def main(model_path):
     while camera.isReady():
         try:
             frame = camera.read()
-                
+            if frame:
+                print("frame exists")
             # objs = model(frame)
-            objs = OBJ_DETECTION.detect(frame)
+            objs = OBJ_DETECTION.detect(main_img=frame)
 
             for obj in objs:
                 label = obj['label']
