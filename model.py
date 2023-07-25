@@ -28,7 +28,7 @@ class ObjectDetection():
         if img.ndimension() == 3:
             img = img.unsqueeze(0)
 
-        preds = self.model(img, augment=False)[0]
+        preds = self.model(img, classes=16, augment=False)[0]
         preds = non_max_suppression(
             preds,
             conf_thres=confidence_threshold,
