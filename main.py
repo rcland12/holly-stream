@@ -45,7 +45,7 @@ def main(model_path):
     while camera.isReady():
         try:
             frame = camera.read()
-            
+                
             objs = model(frame)
 
             for obj in objs:
@@ -59,11 +59,13 @@ def main(model_path):
             cv2.imshow("video frame", frame)
             if cv2.waitKey(25) & 0xFF == ord('q'):
                 break
-
+        
         except KeyboardInterrupt:
             break
-    cap.release()
-    cv2.destroyAllWindows()
+
+    camera.release()
+    del camera
+    # cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
