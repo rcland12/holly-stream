@@ -5,6 +5,7 @@ import nanocamera as nano
 
 from assets import Assets
 from model import ObjectDetection
+from elements.yolo import OBJ_DETECTION
 
 
 #def gstreamer_pipeline(
@@ -46,17 +47,18 @@ def main(model_path):
         try:
             frame = camera.read()
                 
-            objs = model(frame)
+            # objs = model(frame)
+            objs = OBJ_DETECTION.detect(frame)
 
             for obj in objs:
-                label = obj['name']
-                score = obj['conf']
+                label = obj['label']
+                score = obj['score']
                 xmin, ymin, xmax, ymax = obj['bbox']
                 color = assets.colors[assets.classes.index(label)]
                 frame = cv2.rectangle(
-                    image=frame,
-                    start_point=(xmin, ymin),
-                    end_point=(xmax, ymax),
+                    img=frame,
+                    pt1=(xmin, ymin),
+                    pt2=(xmax, ymax),
                     color=color,
                     thickness=2
                 ) 

@@ -13,6 +13,7 @@ from utilities import (
 class ObjectDetection():
     def __init__(self, model, img_shape=(640, 640), confidence_threshold=0.3, iou_threshold=0.1):
         if torch.cuda.is_available():
+            print("CUDA available")
             self.device = "cuda"
             self.fp16 = False
         else:
@@ -52,8 +53,8 @@ class ObjectDetection():
             for i in range(len(bboxes)):
                 prediction = {
                     "bbox": bboxes[i],
-                    "conf": conf[i],
-                    "name": names[i],
+                    "score": conf[i],
+                    "label": names[i],
                 }
                 predictions.append(prediction)
 
