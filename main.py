@@ -48,7 +48,7 @@ def main(model_path):
         try:
             frame = camera.read()
             # objs = model(frame)
-            objs = model(main_img=frame)
+            objs = model(frame=frame)
 
             for obj in objs:
                 label = obj['label']
