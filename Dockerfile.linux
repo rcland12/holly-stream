@@ -1,10 +1,10 @@
-FROM nvcr.io/nvidia/l4t-pytorch:r35.2.1-pth2.0-py3
-WORKDIR /home/holly
-COPY main.py predict.py ./
+FROM debian:stable-slim
+WORKDIR /
+COPY main.py predict.py /
 
-RUN apt update && \
-    apt install -y ffmpeg && \
-    pip install ultralytics supervision && \
+RUN apt-get update && \
+    apt-get install -y ffmpeg && \
+    pip3 install -r requirements_linux.txt && \
     pip3 uninstall -y opencv-python && \
     pip3 install opencv-python-headless==3.4.18.65
 
