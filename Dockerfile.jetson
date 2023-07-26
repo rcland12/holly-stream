@@ -26,8 +26,7 @@ RUN sh -c "echo '/usr/local/cuda/lib64' >> /etc/ld.so.conf.d/nvidia-tegra.conf" 
     liblapack-dev libeigen3-dev gfortran \
     libhdf5-dev protobuf-compiler \
     libprotobuf-dev libgoogle-glog-dev libgflags-dev \
-    libopenmpi-dev libomp-dev && \
-    libjpeg-dev zlib1g-dev libpython3-dev libfreetype6-dev
+    libopenmpi-dev libomp-dev
 
 RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip && \
     wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/${OPENCV_VERSION}.zip && \
@@ -70,7 +69,8 @@ RUN wget https://nvidia.box.com/shared/static/p57jwntv436lfrd78inwl7iml6p13fzh.w
     pip3 install Cython && \
     pip3 install numpy torch-${PYTORCH_VERSION}-cp36-cp36m-linux_aarch64.whl
 
-RUN git clone --branch ${TORCHVISION_BRANCH} https://github.com/pytorch/vision torchvision && \
+RUN apt-get install -y libjpeg-dev zlib1g-dev libpython3-dev libfreetype6-dev && \
+    git clone --branch ${TORCHVISION_BRANCH} https://github.com/pytorch/vision torchvision && \
     cd torchvision && \
     export BUILD_VERSION=${TORCHVISION_VERSION} && \
     python3 setup.py install --user
