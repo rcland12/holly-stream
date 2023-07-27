@@ -1,6 +1,6 @@
 FROM nvcr.io/nvidia/l4t-base:r32.7.1
 WORKDIR /
-COPY assets.py model.py utilities.py jetson.py models/ /
+COPY assets.py model.py utilities.py requirements_jetson.txt jetson.py models/ /
 
 # OpenCV (4.5.1) installation from source
 # The default OpenCV version on the Jetson Nano (Jetpack 4.6.1) is 4.1.1
@@ -11,7 +11,7 @@ RUN sh -c "echo '/usr/local/cuda/lib64' >> /etc/ld.so.conf.d/nvidia-tegra.conf" 
     ldconfig && \
     apt-get update && \
     apt-get install -y \
-    git unzip pkg-config libpng-dev libtiff-dev \
+    git cmake unzip pkg-config libpng-dev libtiff-dev \
     libavcodec-dev libavformat-dev libswscale-dev \
     libgtk2.0-dev libcanberra-gtk* \
     python3-dev python3-numpy python3-pip \ 
@@ -52,8 +52,7 @@ RUN cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr \
     -D BUILD_EXAMPLES=OFF .. && \
     make -j4
 
-RUN rm -r /usr/include/opencv4/opencv2 && \
-    make install && \
+RUN make install && \
     ldconfig && \
     make clean && \
     apt-get update
@@ -75,6 +74,6 @@ RUN apt-get install -y libjpeg-dev zlib1g-dev libpython3-dev libfreetype6-dev &&
     export BUILD_VERSION=${TORCHVISION_VERSION} && \
     python3 setup.py install --user
 
-RUN pip3 install -r requirements.txt
+RUN pip3 install -r requirements_jetson.txt
 
 CMD ["python3", "jetson.py"]
