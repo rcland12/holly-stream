@@ -5,7 +5,7 @@ import subprocess
 from supervision import BoxAnnotator
 from supervision.draw.color import ColorPalette
 
-from plotting import *
+from predict import *
 
 
 def main(ip_address, port, application, stream_key, capture_index, model):

@@ -1,11 +1,11 @@
 FROM debian:stable-slim
-WORKDIR /
-COPY main.py predict.py /
+WORKDIR /root/app
+COPY linux.py predict.py ./
 
 RUN apt-get update && \
     apt-get install -y ffmpeg && \
-    pip3 install -r requirements_linux.txt && \
+    pip3 install ultralytics supervision && \
     pip3 uninstall -y opencv-python && \
     pip3 install opencv-python-headless==3.4.18.65
 
-CMD ["python3", "main.py", "--ip", "34.148.117.56", "--port", "1935", "--application", "live", "--stream_key", "hollyvideostream", "--capture_index", "0", "--model", "yolov8n.pt"]
+CMD ["python3", "main.py", "--ip", "127.0.0.1", "--port", "1935", "--application", "live", "--stream_key", "stream", "--capture_index", "0", "--model", "yolov8n.pt"]

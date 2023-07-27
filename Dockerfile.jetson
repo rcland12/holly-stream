@@ -1,6 +1,11 @@
 FROM nvcr.io/nvidia/l4t-base:r32.7.1
-WORKDIR /
-COPY assets.py model.py utilities.py requirements_jetson.txt jetson.py models/ /
+ARG APPDIR="/root/app"
+ARG BUILDDIR="/root/build"
+
+WORKDIR ${APPDIR}
+COPY assets.py model.py utilities.py jetson.py ./
+COPY models/ ./models/
+WORKDIR ${BUILDDIR}
 
 # OpenCV (4.5.1) installation from source
 # The default OpenCV version on the Jetson Nano (Jetpack 4.6.1) is 4.1.1
@@ -33,12 +38,12 @@ RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/${OPENCV_VERSION
     unzip opencv.zip && unzip opencv_contrib.zip && \
     mv opencv-${OPENCV_VERSION} opencv && mv opencv_contrib-${OPENCV_VERSION} opencv_contrib && \
     rm opencv.zip && rm opencv_contrib.zip && \
-    mkdir /opencv/build
+    mkdir ./opencv/build
 
-WORKDIR /opencv/build
+WORKDIR /root/build/opencv/build
 
 RUN cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr \
-    -D OPENCV_EXTRA_MODULES_PATH=/opencv_contrib/modules \
+    -D OPENCV_EXTRA_MODULES_PATH=${BUILDDIR}/opencv_contrib/modules \
     -D EIGEN_INCLUDE_PATH=/usr/include/eigen3 -D WITH_OPENCL=OFF \
     -D WITH_CUDA=ON -D CUDA_ARCH_BIN=5.3 -D CUDA_ARCH_PTX="" \
     -D WITH_CUDNN=ON -D WITH_CUBLAS=ON -D ENABLE_FAST_MATH=ON \
@@ -58,7 +63,7 @@ RUN make install && \
     apt-get update
 
 # PyTorch (1.8.0) and Torchvision (0.9.0) installation via pip wheel
-WORKDIR /
+WORKDIR ${BUILDDIR}
 ARG PYTORCH_VERSION="1.8.0"
 ARG TORCHVISION_VERSION="0.9.0"
 ARG TORCHVISION_BRANCH="release/0.9"
@@ -74,6 +79,7 @@ RUN apt-get install -y libjpeg-dev zlib1g-dev libpython3-dev libfreetype6-dev &&
     export BUILD_VERSION=${TORCHVISION_VERSION} && \
     python3 setup.py install --user
 
-RUN pip3 install -r requirements_jetson.txt
+RUN pip3 install nanocamera
 
+WORKDIR ${APPDIR}
 CMD ["python3", "jetson.py"]
