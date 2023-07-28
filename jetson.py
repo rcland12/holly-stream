@@ -33,7 +33,7 @@ def main(model_path):
                     img=frame,
                     text=f'{label} ({str(score)})',
                     org=(xmin,ymin),
-                    font=cv2.FONT_HERSHEY_SIMPLEX ,
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX ,
                     fontScale=0.75,
                     color=color,
                     thickness=1,
