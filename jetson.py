@@ -31,7 +31,7 @@ def main(model_path):
                     thickness=2
                 )
                 frame = cv2.putText(
-                    image=frame,
+                    img=frame,
                     text=f'{label} ({str(score)})',
                     org=(xmin,ymin),
                     font=cv2.FONT_HERSHEY_SIMPLEX ,
