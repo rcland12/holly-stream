@@ -1,7 +1,7 @@
 # Holly Stream
 This application will ingest your computers webcam feed (using ffmpeg), apply an object detection task on the feed with bounding boxes, and send that feed via RTMP to an address of your choice.
 
-## How to deploy
+## How to deploy on a Linux machine
 You can deploy with docker:
 ```bash
 docker build -t holly-stream .
@@ -124,3 +124,35 @@ By default this application detects dogs. To change or add classes for detection
 | 77           | teddy bear     |
 | 78           | hair drier     |
 | 79           | toothbrush     |
+
+## How to deploy on Nvidia Jetson Nano machine
+The default operating system on the Jetson Nane is Ubuntu 18.04 with Python version 3.6 and JetPack version 4.6.1.
+
+If you plan on building this container you have to define the default Docker runtime by editing the file `/etc/docker/daemon.json` with the changes below. If you pull a pre-built container then you can define the runtime in your `docker run` command with the flag `--runtime=nvidia`.
+```bash
+{
+    "runtimes": {
+        "nvidia": {
+            "path": "nvidia-container-runtime",
+            "runtimeArgs": []
+        }
+    },
+    "default-runtime": "nvidia"
+}
+```
+
+Next, deploy with Docker by building the container from source and running. This build takes roughly two hours to complete, so the next option is advisable.
+```bash
+docker build -f Dockerfile.jetson -t detection-stream:jetson-latest
+docker run -it --rm --net=host --device=/dev/video0:/dev/video0 detection-stream:jetson-latest
+```
+
+Or, deploy a pre-built container via my repository from Dockerhub:
+```bash
+docker run -it --rm --runtime=nvidia --net=host --device=/dev/video0:/dev/video0 rcland12/detection-stream:jetson-latest
+```
+
+To deploy a YOLOv5 model on the Nvidia Jetson Nano, I have found it easiest to use the following versions:
+- Python 3.6.9 (default)
+- OpenCV 4.5.1
+- Pytorch 1.8.0/Torchvision 0.9.0 ([installation instructions](https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048))

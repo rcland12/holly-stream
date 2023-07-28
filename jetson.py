@@ -8,26 +8,27 @@ from model import ObjectDetection
 
 
 def main(model_path):
-    assets = Assets()
-    model = ObjectDetection(model_path)
+    # assets = Assets()
+    # model = ObjectDetection(model_path)
 
     camera = nano.Camera(flip=0, width=640, height=480, fps=30)
     while camera.isReady():
         try:
             frame = camera.read()
-            objs = model(frame=frame)
+            print(frame)
+            # objs = model(frame=frame)
 
-            for obj in objs:
-                label = obj['label']
-                xmin, ymin, xmax, ymax = obj['bbox']
-                color = assets.colors[assets.classes.index(label)]
-                frame = cv2.rectangle(
-                    img=frame,
-                    pt1=(xmin, ymin),
-                    pt2=(xmax, ymax),
-                    color=color,
-                    thickness=2
-                )
+            # for obj in objs:
+            #     label = obj['label']
+            #     xmin, ymin, xmax, ymax = obj['bbox']
+            #     color = assets.colors[assets.classes.index(label)]
+            #     frame = cv2.rectangle(
+            #         img=frame,
+            #         pt1=(xmin, ymin),
+            #         pt2=(xmax, ymax),
+            #         color=color,
+            #         thickness=2
+            #     )
 
             cv2.imshow("video frame", frame)
             if cv2.waitKey(25) & 0xFF == ord('q'):
