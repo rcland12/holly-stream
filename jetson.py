@@ -15,7 +15,6 @@ def main(model_path):
     while camera.isReady():
         try:
             frame = camera.read()
-            print(frame)
             objs = model(frame=frame, classes=None)
 
             for obj in objs:
