@@ -16,7 +16,7 @@ class ObjectDetection():
         self.new_width = 320
         self.stride = 32
 
-    def __call__(self, frame, confidence_threshold=0.3, iou_threshold=0.45):
+    def __call__(self, frame, classes=None, confidence_threshold=0.3, iou_threshold=0.45):
         height, width = frame.shape[:2]
         new_height = int((((self.new_width / width) * height) // self.stride) * self.stride)
 
@@ -33,12 +33,13 @@ class ObjectDetection():
             preds,
             conf_thres=confidence_threshold,
             iou_thres=iou_threshold,
-            classes=16
+            classes=classes
         )
         predictions = []
         
         if preds[0] is not None and len(preds):
             for pred in preds[0]:
+                score = numpy.round(pred[4].cpu().detach().numpy(), 2)
                 label = self.classes[int(pred[5])]
                 xmin = int(pred[0] * width / self.new_width)
                 ymin = int(pred[1] * height / new_height)
@@ -47,7 +48,8 @@ class ObjectDetection():
 
                 prediction = {
                     'label': label,
-                    'bbox' : [xmin, ymin, xmax, ymax]
+                    'bbox' : [xmin, ymin, xmax, ymax],
+                    'score': score
                 }
 
                 predictions.append(prediction)
