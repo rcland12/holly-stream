@@ -8,5 +8,5 @@ docker run --rm \
 --env DISPLAY=$DISPLAY \
 --volume /tmp/.X11-unix:/tmp/.X11-unix \
 --volume /tmp/argus_socket:/tmp/argus_socket \
---volume /home/russ/holly-stream/weights:/root/app/weights \
+--volume ${STREAM_PATH}/weights:/root/app/weights \
 jetson-stream:latest

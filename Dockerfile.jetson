@@ -81,5 +81,6 @@ RUN apt-get install -y libjpeg-dev zlib1g-dev libpython3-dev libfreetype6-dev &&
 
 RUN pip3 install nanocamera
 
+ARG CLASSES=all
 WORKDIR ${APPDIR}
-CMD ["python3", "jetson.py"]
+CMD ["python3", "jetson.py", "--classes=${CLASSES}"]

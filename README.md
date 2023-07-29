@@ -1,6 +1,14 @@
 # Holly Stream
 This application will ingest your computers webcam feed (using ffmpeg), apply an object detection task on the feed with bounding boxes, and send that feed via RTMP to an address of your choice.
 
+Define an environmental variable for the path to this repo:
+```bash
+export STREAM_PATH=<path_to_repo>
+
+# example
+export STREAM_PATH=/home/russ/holly-stream
+```
+
 ## How to deploy on a Linux machine
 You can deploy with docker:
 ```bash
@@ -38,6 +46,46 @@ python main.py \
 - Lastly, the model allows you to use a PyTorch YOLO model or a custom trained model. This program uses YOLO in the backend, so only YOLO architecture will work here.
 
 To change these parameters when using Docker, open the `Dockerfile` and make the changes. Then make sure to rebuild the container.
+
+## How to deploy on Nvidia Jetson Nano SDK
+The default operating system on the Jetson Nane is Ubuntu 18.04 with Python version 3.6 and JetPack version 4.6.1.
+
+If you plan on building this container you have to define the default Docker runtime by editing the file `/etc/docker/daemon.json` with the changes below. If you pull a pre-built container then you can define the runtime in your `docker run` command with the flag `--runtime=nvidia`.
+```bash
+{
+    "runtimes": {
+        "nvidia": {
+            "path": "nvidia-container-runtime",
+            "runtimeArgs": []
+        }
+    },
+    "default-runtime": "nvidia"
+}
+```
+
+To deploy with Docker run the following script:
+```bash
+./run.sh
+```
+
+To build the container from source follow these commands below. This build takes roughly two hours to complete, so the previous option is advisable unless you made changes to the Dockerfile.
+```bash
+docker build -f Dockerfile.jetson -t detection-stream:jetson-latest
+docker run --rm \
+--interactive \
+--tty \
+--net=host \
+--env DISPLAY=$DISPLAY \
+--volume /tmp/.X11-unix:/tmp/.X11-unix \
+--volume /tmp/argus_socket:/tmp/argus_socket \
+--volume ${STREAM_PATH}/weights:/root/app/weights \
+detection-stream:latest
+```
+
+To deploy a YOLOv5 model on the Nvidia Jetson Nano, I have found it easiest to use the following versions:
+- Python 3.6.9 (default)
+- OpenCV 4.5.1
+- Pytorch 1.8.0/Torchvision 0.9.0 ([installation instructions](https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048))
 
 ## Change the default class predictor
 By default this application detects dogs. To change or add classes for detection, edit line 54 of `main.py`. For example is can be `classes=16` or `classes=[0, 14, 56]`. To include every class, change line 54 to `results = model(frame)`. The list of all possible classes are listed below:
@@ -124,35 +172,3 @@ By default this application detects dogs. To change or add classes for detection
 | 77           | teddy bear     |
 | 78           | hair drier     |
 | 79           | toothbrush     |
-
-## How to deploy on Nvidia Jetson Nano machine
-The default operating system on the Jetson Nane is Ubuntu 18.04 with Python version 3.6 and JetPack version 4.6.1.
-
-If you plan on building this container you have to define the default Docker runtime by editing the file `/etc/docker/daemon.json` with the changes below. If you pull a pre-built container then you can define the runtime in your `docker run` command with the flag `--runtime=nvidia`.
-```bash
-{
-    "runtimes": {
-        "nvidia": {
-            "path": "nvidia-container-runtime",
-            "runtimeArgs": []
-        }
-    },
-    "default-runtime": "nvidia"
-}
-```
-
-Next, deploy with Docker by building the container from source and running. This build takes roughly two hours to complete, so the next option is advisable.
-```bash
-docker build -f Dockerfile.jetson -t detection-stream:jetson-latest
-docker run -it --rm --net=host --device=/dev/video0:/dev/video0 detection-stream:jetson-latest
-```
-
-Or, deploy a pre-built container via my repository from Dockerhub:
-```bash
-docker run -it --rm --runtime=nvidia --net=host --device=/dev/video0:/dev/video0 rcland12/detection-stream:jetson-latest
-```
-
-To deploy a YOLOv5 model on the Nvidia Jetson Nano, I have found it easiest to use the following versions:
-- Python 3.6.9 (default)
-- OpenCV 4.5.1
-- Pytorch 1.8.0/Torchvision 0.9.0 ([installation instructions](https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048))

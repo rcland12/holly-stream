@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  detection-stream:
+    image: rcland12/detection-stream:jetson-latest
+    network_mode: "host"
+    env:
+      - DISPLAY=$DISPLAY
+      - CLASSES=[16]
+    volumes:
+      - "/tmp/.X11-unix:/tmp/.X11-unix"
+      - "/tmp/argus_socket:/tmp/argus_socket"
+      - "${STREAM_PATH}/weights:/root/app/weights"
+    tty: true
+    stdin_open: true

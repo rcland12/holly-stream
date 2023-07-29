@@ -3,19 +3,25 @@ import argparse
 import numpy as np
 import nanocamera as nano
 
+from ast import literal_eval
+
 from assets import Assets
 from model import ObjectDetection
 
 
-def main(model_path):
+def main(model_path, classes):
     assets = Assets()
     model = ObjectDetection(model_path)
+    if classes == "all":
+        class_arg = None
+    else:
+        class_arg = literal_eval(classes)
 
     camera = nano.Camera(flip=0, width=640, height=480, fps=30)
     while camera.isReady():
         try:
             frame = camera.read()
-            objs = model(frame=frame, classes=None)
+            objs = model(frame=frame, classes=class_arg)
 
             for obj in objs:
                 score = obj['score']
@@ -60,8 +66,10 @@ if __name__ == "__main__":
     parser.add_argument("-k", "--stream_key", default="stream", type=str, help="Stream key for security purposes.")
     parser.add_argument("-c", "--capture_index", default=0, type=int, help="Stream capture index. Most webcams are 0.")
     parser.add_argument("-m", "--model", default="weights/yolov5n.pt", type=str, help="Model to use. YOLO or local custom trained model.")
+    parser.add_argument("--classes", type=str, help="Model to use. YOLO or local custom trained model.")
     args = parser.parse_args()
     
     main(
-        args.model
+        args.model,
+        args.classes
     )
