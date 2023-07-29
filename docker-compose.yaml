@@ -1,12 +1,11 @@
-version: "3.9"
+version: "3"
 
 services:
   detection-stream:
     image: rcland12/detection-stream:jetson-latest
     network_mode: "host"
-    env:
+    environment:
       - DISPLAY=$DISPLAY
-      - CLASSES=[16]
     volumes:
       - "/tmp/.X11-unix:/tmp/.X11-unix"
       - "/tmp/argus_socket:/tmp/argus_socket"
