@@ -1,27 +1,20 @@
 import cv2
-import argparse
-import numpy as np
-import nanocamera as nano
-
-from ast import literal_eval
 
 from assets import Assets
+from nanocamera import Camera
 from model import ObjectDetection
+from utilities import EnvArgumentParser
 
 
-def main(model_path, classes):
+def main(model_path, classes, width, height, fps):
     assets = Assets()
     model = ObjectDetection(model_path)
-    if classes == "all":
-        class_arg = None
-    else:
-        class_arg = literal_eval(classes)
 
-    camera = nano.Camera(flip=0, width=640, height=480, fps=30)
+    camera = Camera(flip=0, width=width, height=height, fps=fps)
     while camera.isReady():
         try:
             frame = camera.read()
-            objs = model(frame=frame, classes=class_arg)
+            objs = model(frame=frame, classes=classes)
 
             for obj in objs:
                 score = obj['score']
@@ -59,17 +52,23 @@ def main(model_path, classes):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Flask API exposing models for inferencing.")
-    parser.add_argument("-i", "--ip", default="127.0.0.1", type=str, help="IP address for stream.")
-    parser.add_argument("-p", "--port", default=1935, type=str, help="Port for rtmp stream. Standard is 1935.")
-    parser.add_argument("-a", "--application", default="live", type=str, help="Application name for server side.")
-    parser.add_argument("-k", "--stream_key", default="stream", type=str, help="Stream key for security purposes.")
-    parser.add_argument("-c", "--capture_index", default=0, type=int, help="Stream capture index. Most webcams are 0.")
-    parser.add_argument("-m", "--model", default="weights/yolov5n.pt", type=str, help="Model to use. YOLO or local custom trained model.")
-    parser.add_argument("--classes", type=str, help="Model to use. YOLO or local custom trained model.")
+    parser = EnvArgumentParser()
+    parser.add_arg("STREAM_IP", default="127.0.0.1", type="str")
+    parser.add_arg("STREAM_PORT", default=1935, type="int")
+    parser.add_arg("STREAM_APPLICATION", default="live", type="str")
+    parser.add_arg("STREAM_KEY", default="stream", type="str")
+    parser.add_arg("CAMERA_INDEX", default=0, type="int")
+    parser.add_arg("MODEL", default="weights/yolov5n.pt", type="str")
+    parser.add_arg("CLASSES", default=None, type="list")
+    parser.add_arg("CAMERA_WIDTH", default=640, type="int")
+    parser.add_arg("CAMERA_HEIGHT", default=480, type="int")
+    parser.add_arg("CAMERA_FPS", default=30, type="int")
     args = parser.parse_args()
-    
+
     main(
-        args.model,
-        args.classes
+        args["MODEL"],
+        args["CLASSES"],
+        args["CAMERA_WIDTH"],
+        args["CAMERA_HEIGHT"],
+        args["CAMERA_FPS"]
     )

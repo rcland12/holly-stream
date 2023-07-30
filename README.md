@@ -50,6 +50,17 @@ To change these parameters when using Docker, open the `Dockerfile` and make the
 ## How to deploy on Nvidia Jetson Nano SDK
 The default operating system on the Jetson Nane is Ubuntu 18.04 with Python version 3.6 and JetPack version 4.6.1.
 
+Installing docker-compose on Jetson Nano:
+```bash
+pip3 install --upgrade pip
+pip3 install docker-compose==1.27.4
+```
+
+Check if it was installed correctly:
+```bash
+docker-compose version
+```
+
 If you plan on building this container you have to define the default Docker runtime by editing the file `/etc/docker/daemon.json` with the changes below. If you pull a pre-built container then you can define the runtime in your `docker run` command with the flag `--runtime=nvidia`.
 ```bash
 {
