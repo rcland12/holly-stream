@@ -33,7 +33,8 @@ class ObjectDetection():
             preds,
             conf_thres=confidence_threshold,
             iou_thres=iou_threshold,
-            classes=classes
+            classes=classes,
+            nc=len(self.classes)
         )
         predictions = []
         
@@ -47,9 +48,9 @@ class ObjectDetection():
                 ymax = int(pred[3] * height / new_height)
 
                 prediction = {
-                    'label': label,
                     'bbox' : [xmin, ymin, xmax, ymax],
-                    'score': score
+                    'score': score,
+                    'label': label
                 }
 
                 predictions.append(prediction)
