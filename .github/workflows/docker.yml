@@ -1,0 +1,34 @@
+name: Build and Push Image to Docker Hub
+
+on:
+  push:
+    branches: [ master ]
+
+env:
+  REGISTRY: docker.io
+  DOCKERHUB_USERNAME: rcland12
+  DOCKERHUB_REPO: detection-stream
+  LINUX_TAG: bullseye-latest
+  JETSON_TAG: jetson-latest
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Docker login
+      env:
+        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      run: |
+        docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+
+    - name: Building images
+      run: docker build -f Dockerfile.linux -t ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}/${{ env.LINUX_TAG }} .
+      run: docker build -f Dockerfile.jetson -t ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}/${{ env.JETSON_TAG }} .
+    
+    - name: Pushing images
+      run: docker push ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}/${{ env.LINUX_TAG }}
+      run: docker push ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}/${{ env.JETSON_TAG }}

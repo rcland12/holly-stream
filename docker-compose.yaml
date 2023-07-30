@@ -18,6 +18,8 @@ services:
   linux-service:
     image: rcland12/detection-stream:bullseye-latest
     network_mode: "host"
+    devices:
+      - "/dev/video0:/dev/video0"
     environment:
       - DISPLAY=$DISPLAY
     volumes:
