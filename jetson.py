@@ -53,22 +53,22 @@ def main(model_path, classes, width, height, fps):
 
 if __name__ == "__main__":
     parser = EnvArgumentParser()
-    parser.add_arg("STREAM_IP", default="127.0.0.1", type="str")
-    parser.add_arg("STREAM_PORT", default=1935, type="int")
-    parser.add_arg("STREAM_APPLICATION", default="live", type="str")
-    parser.add_arg("STREAM_KEY", default="stream", type="str")
-    parser.add_arg("CAMERA_INDEX", default=0, type="int")
-    parser.add_arg("MODEL", default="weights/yolov5n.pt", type="str")
-    parser.add_arg("CLASSES", default=None, type="list")
-    parser.add_arg("CAMERA_WIDTH", default=640, type="int")
-    parser.add_arg("CAMERA_HEIGHT", default=480, type="int")
-    parser.add_arg("CAMERA_FPS", default=30, type="int")
+    parser.add_arg("MODEL", default="weights/yolov5n.pt", type=str)
+    parser.add_arg("CLASSES", default=None, type=list)
+    parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
+    parser.add_arg("STREAM_PORT", default=1935, type=int)
+    parser.add_arg("STREAM_APPLICATION", default="live", type=str)
+    parser.add_arg("STREAM_KEY", default="stream", type=str)
+    parser.add_arg("CAMERA_INDEX", default=0, type=int)
+    parser.add_arg("CAMERA_WIDTH", default=640, type=int)
+    parser.add_arg("CAMERA_HEIGHT", default=480, type=int)
+    parser.add_arg("CAMERA_FPS", default=30, type=int)
     args = parser.parse_args()
 
     main(
-        args["MODEL"],
-        args["CLASSES"],
-        args["CAMERA_WIDTH"],
-        args["CAMERA_HEIGHT"],
-        args["CAMERA_FPS"]
+        args.MODEL,
+        args.CLASSES,
+        args.CAMERA_WIDTH,
+        args.CAMERA_HEIGHT,
+        args.CAMERA_FPS
     )

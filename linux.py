@@ -126,21 +126,21 @@ def main(
 
 if __name__ == "__main__":
     parser = EnvArgumentParser()
-    parser.add_arg("STREAM_IP", default="127.0.0.1", type="str")
-    parser.add_arg("STREAM_PORT", default=1935, type="int")
-    parser.add_arg("STREAM_APPLICATION", default="live", type="str")
-    parser.add_arg("STREAM_KEY", default="stream", type="str")
-    parser.add_arg("CAMERA_INDEX", default=0, type="int")
-    parser.add_arg("MODEL", default="weights/yolov5n.pt", type="str")
-    parser.add_arg("CLASSES", default=None, type="list")
+    parser.add_arg("MODEL", default="weights/yolov5n.pt", type=str)
+    parser.add_arg("CLASSES", default=None, type=list)
+    parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
+    parser.add_arg("STREAM_PORT", default=1935, type=int)
+    parser.add_arg("STREAM_APPLICATION", default="live", type=str)
+    parser.add_arg("STREAM_KEY", default="stream", type=str)
+    parser.add_arg("CAMERA_INDEX", default=0, type=int)
     args = parser.parse_args()
 
     main(
-	    args["MODEL"],
-        args["CLASSES"],
-	    args["STREAM_IP"],
-	    args["STREAM_PORT"],
-	    args["STREAM_APPLICATION"],
-	    args["STREAM_KEY"],
-	    args["CAMERA_INDEX"]
+	    args.MODEL,
+        args.CLASSES,
+	    args.STREAM_IP,
+	    args.STREAM_PORT,
+	    args.STREAM_APPLICATION,
+	    args.STREAM_KEY,
+	    args.CAMERA_INDEX
     )
