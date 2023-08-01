@@ -8,11 +8,17 @@ import torchvision
 from ast import literal_eval
 from models.common import Ensemble
 
+
 class EnvArgumentParser():
     def __init__(self):
         self.dict = {}
     
-    def add_arg(self, variable, default=None, type="str"):
+    class define_dict(dict):
+        __getattr__ = dict.get
+        __setattr__ = dict.__setitem__
+        __delattr__ = dict.__delitem__
+    
+    def add_arg(self, variable, default=None, type=str):
         env = os.environ.get(variable)
 
         if env is None:
@@ -23,34 +29,21 @@ class EnvArgumentParser():
         self.dict[variable] = value
     
     def cast_type(self, arg, d_type):
-        if d_type == "str":
+        if d_type == list or d_type == tuple:
             try:
-                return str(arg)
-            except:
-                assert("Argument does not match given data type.")
-        elif d_type == "int":
+                cast_value = literal_eval(arg)
+                return cast_value
+            except (ValueError, SyntaxError):
+                raise ValueError(f"Argument {arg} does not match given data type or is not supported.")
+        else:
             try:
-                return int(arg)
-            except:
-                assert("Argument does not match given data type.")
-        elif d_type == "float":
-            try:
-                return float(arg)
-            except:
-                assert("Argument does not match given data type.")
-        elif d_type == "bool":
-            try:
-                return bool(arg)
-            except:
-                assert("Argument does not match given data type.")
-        elif d_type == "list":
-            try:
-                return literal_eval(arg)
-            except:
-                assert("Argument does not match given data type.")
+                cast_value = d_type(arg)
+                return cast_value
+            except (ValueError, SyntaxError):
+                raise ValueError(f"Argument {arg} does not match given data type or is not supported.")
     
     def parse_args(self):
-        return self.dict
+        return self.define_dict(self.dict)
 
 
 def normalize_boxes(bbox, width, height):

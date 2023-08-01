@@ -31,7 +31,7 @@ RUN sh -c "echo '/usr/local/cuda/lib64' >> /etc/ld.so.conf.d/nvidia-tegra.conf" 
     liblapack-dev libeigen3-dev gfortran \
     libhdf5-dev protobuf-compiler \
     libprotobuf-dev libgoogle-glog-dev libgflags-dev \
-    libopenmpi-dev libomp-dev
+    libopenmpi-dev libomp-dev ffmpeg
 
 RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip && \
     wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/${OPENCV_VERSION}.zip && \
