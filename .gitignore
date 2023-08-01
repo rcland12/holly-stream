@@ -1,9 +1,6 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,linux
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,linux
 
-# custom files
-*.pt
-
 ### Linux ###
 *~
 
