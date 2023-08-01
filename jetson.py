@@ -91,7 +91,7 @@ def main(
 
 if __name__ == "__main__":
     parser = EnvArgumentParser()
-    parser.add_arg("MODEL", default="weights/yolov5n.pt", type=str)
+    parser.add_arg("MODEL", default="weights/yolov5nu.pt", type=str)
     parser.add_arg("CLASSES", default=None, type=list)
     parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
     parser.add_arg("STREAM_PORT", default=1935, type=int)
