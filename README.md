@@ -1,5 +1,61 @@
 # Holly Stream
-This application will ingest your computers webcam feed (using ffmpeg), apply an object detection task on the feed with bounding boxes, and send that feed via RTMP to an address of your choice.
+This application will ingest your computers webcam feed (using ffmpeg), apply an object detection task on the feed with bounding boxes, and send that feed via RTMP to an address of your choice. You have the following options for recording and applying a custom object detection model:
+
+1. Record a webcam feed from a Linux machine.
+2. Record a webcam feed from a Jetson Nano architecture.
+
+And the following options for serving this feed:
+
+1. To the same device (localhost).
+2. To another local device.
+3. To a remote web server.
+
+Lastly, you have two options for reading in this stream (client):
+
+1. Media player (VLC, Windows Media Player, etc.)
+2. Web page via Nginx/HLS.
+
+Pick any of the previous three options and follow the instructions below to deploy. If you are new to object detection I recommend you stick to the default model provided. Otherwise, you can supply your own YOLOv5 or YOLOv8 model.
+
+# Deployment
+
+## Deploying a Jetson Nano
+
+If you are using a Jetson Nano you must have a camera attached. Begin by cloning the repository. Create an `.env` file to define parameter you wish to change. If you do not define a parameter it will default to a value given below. Here is a list of all possible arguments:
+```bash
+MODEL=weights/yolov5n.pt
+CLASSES=[0, 16]
+
+STREAM_IP=127.0.0.1
+STREAM_PORT=1935
+STREAM_APPLICATION=live
+STREAM_KEY=stream
+
+CAMERA_INDEX=0
+CAMERA_WIDTH=640
+CAMERA_HEIGHT=480
+CAMERA_FPS=30
+```
+
+If you have a GPU on your linux machine (recommended) then append the following block to the `docker-compose.yml` file under the service `linux-service`:
+```yaml
+deploy:
+    resources:
+    reservations:
+        devices:
+        - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+```
+
+Next, to launch the application run:
+```bash
+docker compose run linux-service
+```
+
+## Deploying on a Linux machine
+
+If you are using a 
 
 Define an environmental variable for the path to this repo:
 ```bash

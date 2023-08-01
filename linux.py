@@ -9,65 +9,66 @@ from supervision import BoxAnnotator, Detections
 from utilities import EnvArgumentParser
 
 
-# skips classes and labels
+# includes classes and labels
 def load_model(model):
 	model = YOLO(model)
 	model.fuse()
-	device = "cuda" if torch.cuda.is_available() else "cpu"
-	return model, device
+	classes = model.model.names
+	return model, classes
 
 
-def plot_bboxes(results, frame, box_annotator):
+def plot_bboxes(results, frame, classes, box_annotator):
 	xyxys = []
+	confidences = []
+	class_ids = []
 
 	for result in results[0]:
+		class_id = result.boxes.cls.cpu().numpy().astype(int)
 		xyxys.append(result.boxes.xyxy.cpu().numpy())
+		confidences.append(result.boxes.conf.cpu().numpy())
+		class_ids.append(result.boxes.cls.cpu().numpy().astype(int))
 
 	detections = Detections(
-		xyxy = results[0].boxes.xyxy.cpu().numpy()
+		xyxy = results[0].boxes.xyxy.cpu().numpy(),
+		confidence = results[0].boxes.conf.cpu().numpy()
+		class_id  = results[0].boxes.cls.cpu().numpy().astype(int)
 	)
 
-	frame = box_annotator.annotate(scene=frame, detections=detections, skip_label=True)
+	labels = [
+		f"{classes[class_id]} {confidence:0.2f}"
+		for _, mask, confidence, class_id, tracker_id
+	  	in detections
+	]
+
+	frame = box_annotator.annotate(scene=frame, detections=detections)
+
 	return frame
 
 
-# includes classes and labels
+# skips classes and labels
 # def load_model(model):
 # 	model = YOLO(model)
 # 	model.fuse()
-# 	classes = model.model.names
-# 	return model, classes
+# 	device = "cuda" if torch.cuda.is_available() else "cpu"
+# 	return model, device
 
 
-# def plot_bboxes(results, frame, classes, box_annotator):
+# def plot_bboxes(results, frame, box_annotator):
 # 	xyxys = []
-# 	confidences = []
-# 	class_ids = []
 
 # 	for result in results[0]:
-# 		class_id = result.boxes.cls.cpu().numpy().astype(int)
 # 		xyxys.append(result.boxes.xyxy.cpu().numpy())
-# 		confidences.append(result.boxes.conf.cpu().numpy())
-# 		class_ids.append(result.boxes.cls.cpu().numpy().astype(int))
 
 # 	detections = Detections(
-# 		xyxy = results[0].boxes.xyxy.cpu().numpy(),
-# 		confidence = results[0].boxes.conf.cpu().numpy()
-# 		class_id  = results[0].boxes.cls.cpu().numpy().astype(int)
+# 		xyxy = results[0].boxes.xyxy.cpu().numpy()
 # 	)
 
-# 	labels = [
-# 		f"{classes[class_id]} {confidence:0.2f}"
-# 		for _, mask, confidence, class_id, tracker_id
-# 	  	in detections
-# 	]
-
-# 	frame = box_annotator.annotate(scene=frame, detections=detections)
-
+# 	frame = box_annotator.annotate(scene=frame, detections=detections, skip_label=True)
 # 	return frame
 
 
 def main(
+		object_detection,
 		model,
 		classes,
 		stream_ip,
@@ -76,11 +77,11 @@ def main(
 		stream_key,
 		camera_index
 	):
-	# set up object detection model, classes, and annotator
-	model, device = load_model(model)
-	box_annotator = BoxAnnotator(color=ColorPalette.default(), thickness=2)
 
-	# set up stream parameters
+	if object_detection:
+		model, device = load_model(model)
+		box_annotator = BoxAnnotator(color=ColorPalette.default(), thickness=2)
+
 	rtmp_url = "rtmp://{}:{}/{}/{}".format(
 		stream_ip,
 		stream_port,
@@ -118,15 +119,17 @@ def main(
 			print("Frame read failed")
 			break
 
-		results = model.predict(frame, classes=classes, device=device, verbose=False)
-		frame = plot_bboxes(results, frame, box_annotator)
+		if object_detection:
+			results = model.predict(frame, classes=classes, device=device, verbose=False)
+			frame = plot_bboxes(results, frame, box_annotator)
 
 		p.stdin.write(frame.tobytes())
 
 
 if __name__ == "__main__":
     parser = EnvArgumentParser()
-    parser.add_arg("MODEL", default="weights/yolov5n.pt", type=str)
+    parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
+    parser.add_arg("MODEL", default="weights/yolov8n.pt", type=str)
     parser.add_arg("CLASSES", default=None, type=list)
     parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
     parser.add_arg("STREAM_PORT", default=1935, type=int)
@@ -136,6 +139,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(
+	    args.OBJECT_DETECTION,
 	    args.MODEL,
         args.CLASSES,
 	    args.STREAM_IP,
