@@ -8,6 +8,7 @@ from utilities import EnvArgumentParser
 
 
 def main(
+		object_detection,
 		model_path,
 		classes,
 		stream_ip,
@@ -20,8 +21,9 @@ def main(
 		camera_fps
 	):
 	
-	assets = Assets()
-	model = ObjectDetection(model_path)
+	if object_detection:
+		assets = Assets()
+		model = ObjectDetection(model_path)
 
 	rtmp_url = "rtmp://{}:{}/{}/{}".format(
 		stream_ip,
@@ -58,30 +60,32 @@ def main(
 
 	while camera.isReady():
 		frame = camera.read()
-		results = model(frame=frame, classes=classes)
 
-		for result in results:
-			score = result['score']
-			label = result['label']
-			xmin, ymin, xmax, ymax = result['bbox']
-			color = assets.colors[assets.classes.index(label)]
-			frame = cv2.rectangle(
-				img=frame,
-				pt1=(xmin, ymin),
-				pt2=(xmax, ymax),
-				color=color,
-				thickness=2
-			)
-			frame = cv2.putText(
-				img=frame,
-				text=f'{label} ({str(score)})',
-				org=(xmin, ymin),
-				fontFace=cv2.FONT_HERSHEY_SIMPLEX ,
-				fontScale=0.75,
-				color=color,
-				thickness=1,
-				lineType=cv2.LINE_AA
-			)
+		if object_detection:
+			results = model(frame=frame, classes=classes)
+
+			for result in results:
+				score = result['score']
+				label = result['label']
+				xmin, ymin, xmax, ymax = result['bbox']
+				color = assets.colors[assets.classes.index(label)]
+				frame = cv2.rectangle(
+					img=frame,
+					pt1=(xmin, ymin),
+					pt2=(xmax, ymax),
+					color=color,
+					thickness=2
+				)
+				frame = cv2.putText(
+					img=frame,
+					text=f'{label} ({str(score)})',
+					org=(xmin, ymin),
+					fontFace=cv2.FONT_HERSHEY_SIMPLEX ,
+					fontScale=0.75,
+					color=color,
+					thickness=1,
+					lineType=cv2.LINE_AA
+				)
 
 		p.stdin.write(frame.tobytes())
 
@@ -91,7 +95,8 @@ def main(
 
 if __name__ == "__main__":
     parser = EnvArgumentParser()
-    parser.add_arg("MODEL", default="weights/yolov5nu.pt", type=str)
+    parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
+    parser.add_arg("MODEL", default="weights/yolov5n.pt", type=str)
     parser.add_arg("CLASSES", default=None, type=list)
     parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
     parser.add_arg("STREAM_PORT", default=1935, type=int)
@@ -104,6 +109,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(
+	    args.OBJECT_DETECTION,
         args.MODEL,
         args.CLASSES,
         args.STREAM_IP,
