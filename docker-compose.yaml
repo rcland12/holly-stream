@@ -4,6 +4,8 @@ services:
   jetson-service:
     image: rcland12/detection-stream:jetson-latest
     network_mode: "host"
+    devices:
+      - "/dev/video0:/dev/video0"
     volumes:
       - "${PWD}/weights:/root/app/weights"
     tty: true
