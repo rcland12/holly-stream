@@ -10,6 +10,7 @@ from utilities import EnvArgumentParser
 def main(
 		object_detection,
 		model_path,
+		model_dim,
 		classes,
 		stream_ip,
 		stream_port,
@@ -23,7 +24,7 @@ def main(
 	
 	if object_detection:
 		assets = Assets()
-		model = ObjectDetection(model_path)
+		model = ObjectDetection(model_path, model_dim=model_dim)
 
 	rtmp_url = "rtmp://{}:{}/{}/{}".format(
 		stream_ip,
@@ -97,6 +98,7 @@ if __name__ == "__main__":
     parser = EnvArgumentParser()
     parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
     parser.add_arg("MODEL", default="weights/yolov5n.pt", type=str)
+    parser.add_arg("MODEL_DIM", default=640, type=int)
     parser.add_arg("CLASSES", default=None, type=list)
     parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
     parser.add_arg("STREAM_PORT", default=1935, type=int)
@@ -111,6 +113,7 @@ if __name__ == "__main__":
     main(
 	    args.OBJECT_DETECTION,
         args.MODEL,
+		args.MODEL_DIM,
         args.CLASSES,
         args.STREAM_IP,
         args.STREAM_PORT,
