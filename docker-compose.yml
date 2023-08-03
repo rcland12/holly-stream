@@ -1,8 +1,11 @@
 version: "3"
 
 services:
-  jetson-service:
+  jetson-stream:
     image: rcland12/detection-stream:jetson-latest
+    build:
+      context: ./
+      dockerfile: Dockerfile.jetson
     network_mode: "host"
     devices:
       - "/dev/video0:/dev/video0"
@@ -15,8 +18,11 @@ services:
     env_file:
       - ${PWD}/.env
 
-  linux-service:
+  linux-stream:
     image: rcland12/detection-stream:bullseye-latest
+    build:
+      context: ./
+      dockerfile: Dockerfile.linux
     network_mode: "host"
     devices:
       - "/dev/video0:/dev/video0"
@@ -29,6 +35,9 @@ services:
   
   nginx-stream:
     image: rcland12/detection-stream:nginx-latest
+    build:
+      context: ./
+      dockerfile: Dockerfile.nginx
     ports:
       - "1935:1935"
     volumes:
@@ -36,6 +45,9 @@ services:
   
   nginx-web:
     image: rcland12/detection-stream:nginx-latest
+    build:
+      context: ./
+      dockerfile: Dockerfile.nginx
     ports:
       - "80:80"
       - "1935:1935"
