@@ -62,22 +62,19 @@ from utilities import (
     attempt_load,
     letterbox,
     non_max_suppression,
-    normalize_boxes,
     scale_coords
 )
 
 
 class ObjectDetection():
-    def __init__(self, model, model_dim=(1280, 1280)):
+    def __init__(self, model):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = attempt_load(weights=model, device=self.device)
         self.classes = self.model.names
-        self.model_dim = model_dim
-        self.stride = 32
 
     def __call__(self, frame, classes=None, confidence_threshold=0.3, iou_threshold=0.45):
         img0 = frame[:, :, ::-1].copy()
-        img = letterbox(img0, new_shape=self.model_dim, stride=self.stride, auto=True)[0]
+        img = letterbox(img0)[0]
         img = img.transpose((2, 0, 1))[::-1]
         img = numpy.ascontiguousarray(img)
         img = torch.from_numpy(img).to(self.device)
@@ -87,12 +84,18 @@ class ObjectDetection():
             img = img[None,:,:,:]
 
         preds = self.model(img, augment=True)[0]
-        preds = non_max_suppression(preds, conf_thres=confidence_threshold, iou_thres=iou_threshold, classes=classes, nc=len(self.classes))[0]
+        preds = non_max_suppression(
+            preds,
+            conf_thres=confidence_threshold,
+            iou_thres=iou_threshold,
+            classes=classes,
+            nc=len(self.classes)
+        )[0]
         preds[:, :4] = scale_coords(img.shape[2:], preds[:, :4], img0.shape).round()
 
         height, width = img0.shape[:2]
-        bboxes = [normalize_boxes(item[:4], width, height) for item in preds]
-        conf = [float(item[4]) for item in preds]
+        bboxes = [item[:4] for item in preds]
+        conf = [round(float(item[4]), 2) for item in preds]
         obj = [int(item[5]) for item in preds]
         names = [self.classes[item] for item in obj]
         predictions = []
