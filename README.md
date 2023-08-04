@@ -121,8 +121,8 @@ A few comments about the parameters:
 - The `CLASSES` variable takes in a list. If you wish to include all possible classes, remove it from the `.env` file. The possible classes for the default model are [listed below]().
 - All classes accept the data type present above. `STREAM_IP` takes a string, `STREAM_PORT` takes an integer, `STREAM_APPLICATION` takes a string, etc.
 
-If you DO NOT have an CUDA enabled Nvidia GPU then remove the following block from the `docker-compose.yml` file under the service `linux-stream`:
-```yaml
+If you have an CUDA enabled Nvidia GPU it is highly recommended you add the following block to the `docker-compose.yml` file under the service `linux-stream`.This will allow you to inference on your GPU, which is highly optimal for matrix multiplications.
+```bash
 deploy:
   resources:
     reservations:

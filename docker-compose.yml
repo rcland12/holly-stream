@@ -32,13 +32,6 @@ services:
     stdin_open: true
     env_file:
       - ${PWD}/.env
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
   
   nginx-stream:
     image: rcland12/detection-stream:nginx-latest
