@@ -2,14 +2,10 @@ FROM nvcr.io/nvidia/l4t-base:r32.7.1
 ARG APPDIR="/root/app"
 ARG BUILDDIR="/root/build"
 
-WORKDIR ${APPDIR}
-COPY assets.py model.py utilities.py jetson.py ./
-COPY models/ ./models/
-WORKDIR ${BUILDDIR}
-
 # OpenCV (4.5.1) installation from source
 # The default OpenCV version on the Jetson Nano (Jetpack 4.6.1) is 4.1.1
 # The default version 4.1.1 causes dependency issues
+WORKDIR ${BUILDDIR}
 ARG OPENCV_VERSION="4.5.1"
 
 RUN sh -c "echo '/usr/local/cuda/lib64' >> /etc/ld.so.conf.d/nvidia-tegra.conf" && \
@@ -82,4 +78,6 @@ RUN apt-get install -y libjpeg-dev zlib1g-dev libpython3-dev libfreetype6-dev &&
 RUN pip3 install nanocamera
 
 WORKDIR ${APPDIR}
+COPY assets.py model.py utilities.py jetson.py ./
+COPY models/ ./models/
 CMD ["python3", "jetson.py"]

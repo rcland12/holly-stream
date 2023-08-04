@@ -10,8 +10,9 @@ from utilities import EnvArgumentParser
 def main(
 		object_detection,
 		model_path,
-		model_dim,
 		classes,
+		confidence_threshold,
+		iou_threshold,
 		stream_ip,
 		stream_port,
 		stream_application,
@@ -24,7 +25,7 @@ def main(
 	
 	if object_detection:
 		assets = Assets()
-		model = ObjectDetection(model_path, model_dim=model_dim)
+		model = ObjectDetection(model_path)
 
 	rtmp_url = "rtmp://{}:{}/{}/{}".format(
 		stream_ip,
@@ -82,16 +83,16 @@ def main(
 					color=color,
 					thickness=2
 				)
-				frame = cv2.putText(
-					img=frame,
-					text=f'{label} ({str(score)})',
-					org=(xmin, ymin),
-					fontFace=cv2.FONT_HERSHEY_SIMPLEX ,
-					fontScale=0.75,
-					color=color,
-					thickness=1,
-					lineType=cv2.LINE_AA
-				)
+				# frame = cv2.putText(
+				# 	img=frame,
+				# 	text=f'{label} ({str(score)})',
+				# 	org=(xmin, ymin),
+				# 	fontFace=cv2.FONT_HERSHEY_PLAIN ,
+				# 	fontScale=0.75,
+				# 	color=color,
+				# 	thickness=1,
+				# 	lineType=cv2.LINE_AA
+				# )
 
 		p.stdin.write(frame.tobytes())
 
@@ -100,32 +101,34 @@ def main(
 
 
 if __name__ == "__main__":
-    parser = EnvArgumentParser()
-    parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
-    parser.add_arg("MODEL", default="weights/yolov5n.pt", type=str)
-    parser.add_arg("MODEL_DIM", default=640, type=int)
-    parser.add_arg("CLASSES", default=None, type=list)
-    parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
-    parser.add_arg("STREAM_PORT", default=1935, type=int)
-    parser.add_arg("STREAM_APPLICATION", default="live", type=str)
-    parser.add_arg("STREAM_KEY", default="stream", type=str)
-    parser.add_arg("CAMERA_INDEX", default=0, type=int)
-    parser.add_arg("CAMERA_WIDTH", default=640, type=int)
-    parser.add_arg("CAMERA_HEIGHT", default=480, type=int)
-    parser.add_arg("CAMERA_FPS", default=30, type=int)
-    args = parser.parse_args()
+	parser = EnvArgumentParser()
+	parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
+	parser.add_arg("MODEL", default="weights/yolov5n.pt", type=str)
+	parser.add_arg("CLASSES", default=None, type=list)
+	parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
+	parser.add_arg("IOU_THRESHOLD", default=0.45, type=float)
+	parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
+	parser.add_arg("STREAM_PORT", default=1935, type=int)
+	parser.add_arg("STREAM_APPLICATION", default="live", type=str)
+	parser.add_arg("STREAM_KEY", default="stream", type=str)
+	parser.add_arg("CAMERA_INDEX", default=0, type=int)
+	parser.add_arg("CAMERA_WIDTH", default=640, type=int)
+	parser.add_arg("CAMERA_HEIGHT", default=480, type=int)
+	parser.add_arg("CAMERA_FPS", default=30, type=int)
+	args = parser.parse_args()
 
-    main(
-	    args.OBJECT_DETECTION,
-        args.MODEL,
-		args.MODEL_DIM,
-        args.CLASSES,
-        args.STREAM_IP,
-        args.STREAM_PORT,
-        args.STREAM_APPLICATION,
-        args.STREAM_KEY,
-        args.CAMERA_INDEX,
-        args.CAMERA_WIDTH,
-        args.CAMERA_HEIGHT,
-        args.CAMERA_FPS
-    )
+	main(
+		args.OBJECT_DETECTION,
+		args.MODEL,
+		args.CLASSES,
+		args.CONFIDENCE_THRESHOLD,
+		args.IOU_THRESHOLD,
+		args.STREAM_IP,
+		args.STREAM_PORT,
+		args.STREAM_APPLICATION,
+		args.STREAM_KEY,
+		args.CAMERA_INDEX,
+		args.CAMERA_WIDTH,
+		args.CAMERA_HEIGHT,
+		args.CAMERA_FPS
+	)

@@ -1,28 +1,54 @@
 # Holly Stream
 This application will ingest your computers webcam feed (using ffmpeg), apply an object detection task on the feed with bounding boxes, and send that feed via RTMP to an address of your choice. You have the following options for recording and applying a custom object detection model:
 
-1. Record a webcam feed from a Linux machine.
-2. Record a webcam feed from a Jetson Nano architecture.
+1. [Record a webcam feed from a Jetson Nano architecture.](#deploying-on-jetson-nano)
+2. [Record a webcam feed from a Linux machine.](#deploying-on-a-linux-machine)
 
 And the following options for serving this feed:
 
 1. To the same device (localhost).
-2. To another local device.
-3. To a remote web server.
+2. To another local device (LAN).
+3. To a remote web server (WAN).
 
 Lastly, you have two options for reading in this stream (client):
 
-1. Media player (VLC, Windows Media Player, etc.)
-2. Web page via Nginx/HLS.
+1. [Media player (VLC, Windows Media Player, etc.)](#watching-stream-through-streaming-software)
+2. [Web page via Nginx/HLS.](#watching-stream-through-web-browser)
 
 Pick any of the previous three options and follow the instructions below to deploy. If you are new to object detection I recommend you stick to the default model provided. Otherwise, you can supply your own YOLOv5 or YOLOv8 model.
 
+### Requirements:
+- Linux machine with a webcam and GPU (optional) OR Nvidia Jetson Nano SDK (JetPack 4.6) with camera attached.
+- Docker and the compose plugin (instructions for installing compose plugin on Jetson Nano [here](#installing-the-docker-compose-plugin-on-jetson-nano))
+
+### Installing the docker-compose plugin on Jetson Nano
+Install using the following command:
+
+```bash
+pip3 install --upgrade pip
+pip3 install docker-compose==1.27.4
+```
+
+Check if it was installed correctly:
+
+```bash
+docker-compose version
+```
+
 # Deployment
 
-## Deploying a Jetson Nano
+## Deploying on Jetson Nano
 
-If you are using a Jetson Nano you must have a camera attached. Begin by cloning the repository. Create an `.env` file to define parameter you wish to change. If you do not define a parameter it will default to a value given below. Here is a list of all possible arguments:
+If you are using a Jetson Nano you must have a camera attached. Begin by cloning the repository. Create an `.env` file to define parameters you wish to change. If you do not define a parameter it will default to a value given below, but you must define an empty `.env` file at minimum.
+
 ```bash
+touch .env
+```
+
+Here is a list of all possible arguments:
+
+```bash
+OBJECT_DETECTION=True
 MODEL=weights/yolov5n.pt
 CLASSES=[0, 16]
 
@@ -37,87 +63,14 @@ CAMERA_HEIGHT=480
 CAMERA_FPS=30
 ```
 
-If you have a GPU on your linux machine (recommended) then append the following block to the `docker-compose.yml` file under the service `linux-service`:
-```yaml
-deploy:
-    resources:
-    reservations:
-        devices:
-        - driver: nvidia
-            count: 1
-            capabilities: [gpu]
-```
+A few comments about the parameters:
+- The `OBJECT_DETECTION` variable is a boolean to turn that tasks on/off. If you turn it off you simply have a live stream feed.
+- You can use any custom trained YOLOv5 model for the `MODEL` parameter.
+- The `CLASSES` variable takes in a list. If you wish to include all possible classes, remove it from the `.env` file. The possible classes for the default model are [listed below](#change-the-default-class-predictor).
+- All arguments accept the data type present above. `STREAM_IP` takes a string, `STREAM_PORT` takes an integer, `STREAM_APPLICATION` takes a string, etc.
 
-Next, to launch the application run:
-```bash
-docker compose run linux-service
-```
+Next, if you intend to use the GPU for inference (highly recommended) you must enable the Nvidia runtime. Edit the file `/etc/docker/daemon.json` with the following changes:
 
-## Deploying on a Linux machine
-
-If you are using a 
-
-Define an environmental variable for the path to this repo:
-```bash
-export STREAM_PATH=<path_to_repo>
-
-# example
-export STREAM_PATH=/home/russ/holly-stream
-```
-
-## How to deploy on a Linux machine
-You can deploy with docker:
-```bash
-docker build -t holly-stream .
-docker run -it --rm --net=host --device=/dev/video0:/dev/video0  holly-stream:latest
-```
-
-Or deploy in your own python environment:
-```bash
-# install prerequisites
-sudo apt update
-sudo apt install ffmpeg
-pip install -r requirements.txt
-
-# run app
-python main.py
-```
-
-You can append flags to the python command via argparse if you do not want the default arguments. These are the default arguments:
-```bash
-python main.py \
---ip 127.0.0.1 \
---port 1935 \
---application live \
---stream_key stream \
---capture_index 0 \
---model yolov8n.pt
-```
-- Each argument can also be abbreviated (`--ip` can be just `-i`, etc.).
-- If you are hosting a live stream on a website you can send the feed to your web servers external IP address.
-- The default port for FTMP video streams is 1935. If for some reason yours is different you can change it here.
-- The application name is something that can be configured on server side. For instance, if you are using Nginx on your server side, the application name is defined in the nginx.conf.
-- The stream key is a common parameter for streaming and allows for more security, ensuring others cannot tamper with your stream.
-- The capture index is the index of your webcam or recording device. On linux this can be found at `/mnt/video0`.
-- Lastly, the model allows you to use a PyTorch YOLO model or a custom trained model. This program uses YOLO in the backend, so only YOLO architecture will work here.
-
-To change these parameters when using Docker, open the `Dockerfile` and make the changes. Then make sure to rebuild the container.
-
-## How to deploy on Nvidia Jetson Nano SDK
-The default operating system on the Jetson Nane is Ubuntu 18.04 with Python version 3.6 and JetPack version 4.6.1.
-
-Installing docker-compose on Jetson Nano:
-```bash
-pip3 install --upgrade pip
-pip3 install docker-compose==1.27.4
-```
-
-Check if it was installed correctly:
-```bash
-docker-compose version
-```
-
-If you plan on building this container you have to define the default Docker runtime by editing the file `/etc/docker/daemon.json` with the changes below. If you pull a pre-built container then you can define the runtime in your `docker run` command with the flag `--runtime=nvidia`.
 ```bash
 {
     "runtimes": {
@@ -130,32 +83,158 @@ If you plan on building this container you have to define the default Docker run
 }
 ```
 
-To deploy with Docker run the following script:
+The application is ready to launch, so pick the method for receiving the stream:
+
+1. If you are watching the stream on the same device set the `STREAM_IP` to `127.0.0.1`, or whatever localhost address you want.
+2. If you are streaming the feed to another device on your local network, set the `STREAM_IP` to the IPV4 address of that device. To find the IP address of a device on linux machine run `ip a` and look for it under `wl01` or something similar. On a windows machine open Windows Powershell and run `ipconfig` and look for `IP address`.
+3. If you are streaming the feed to another server set the `STREAM_IP` to the public IP address for that server. Also make sure you expose port 1935 on the firewall and router if necessary for the server your sending the stream to.
+
+Lastly, to receive the stream on the device you picked above you have two options:
+
+1. [Watch the stream on streaming software such as VLC, Windows Media Player, OBS.](#watching-stream-through-streaming-software)
+2. [Watch the stream through a browser.](#watching-stream-through-web-browser)
+
+## Deploying on a Linux machine
+
+You must have a webcam attached to your Linux machine. Begin by cloning the repository. Create an `.env` file to define parameters you wish to change. If you do not define a parameter it will default to a value given below, but you must define an empty `.env` file at minimum.
+
 ```bash
-./run.sh
+touch .env
 ```
 
-To build the container from source follow these commands below. This build takes roughly two hours to complete, so the previous option is advisable unless you made changes to the Dockerfile.
+Here is a list of all possible arguments:
+
 ```bash
-docker build -f Dockerfile.jetson -t detection-stream:jetson-latest
-docker run --rm \
---interactive \
---tty \
---net=host \
---env DISPLAY=$DISPLAY \
---volume /tmp/.X11-unix:/tmp/.X11-unix \
---volume /tmp/argus_socket:/tmp/argus_socket \
---volume ${STREAM_PATH}/weights:/root/app/weights \
-detection-stream:latest
+OBJECT_DETECTION=True
+MODEL=weights/yolov5n.pt
+CLASSES=[0, 16]
+
+STREAM_IP=127.0.0.1
+STREAM_PORT=1935
+STREAM_APPLICATION=live
+STREAM_KEY=stream
+
+CAMERA_INDEX=0
+CAMERA_WIDTH=640
+CAMERA_HEIGHT=480
+CAMERA_FPS=30
 ```
 
-To deploy a YOLOv5 model on the Nvidia Jetson Nano, I have found it easiest to use the following versions:
-- Python 3.6.9 (default)
-- OpenCV 4.5.1
-- Pytorch 1.8.0/Torchvision 0.9.0 ([installation instructions](https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048))
+A few comments about the parameters:
+- The `OBJECT_DETECTION` variable is a boolean to turn that tasks on/off. If you turn it off you simply have a live stream feed.
+- You can use any custom trained YOLOv5 model for the `MODEL` parameter.
+- The `CLASSES` variable takes in a list. If you wish to include all possible classes, remove it from the `.env` file. The possible classes for the default model are [listed below]().
+- All arguments accept the data type present above. `STREAM_IP` takes a string, `STREAM_PORT` takes an integer, `STREAM_APPLICATION` takes a string, etc.
+
+If you have an CUDA enabled Nvidia GPU it is highly recommended you add the following block to the `docker-compose.yml` file under the service `linux-stream`.This will allow you to inference on your GPU, which is highly optimal for matrix multiplications.
+```bash
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+```
+
+The application is ready to launch, so pick the method for receiving the stream:
+
+1. If you are watching the stream on the same device set the `STREAM_IP` to `127.0.0.1`, or whatever localhost address you want.
+2. If you are streaming the feed to another device on your local network, set the `STREAM_IP` to the IPV4 address of that device. To find the IP address of a device on linux machine run `ip a` and look for it under `wl01` or something similar. On a windows machine open Windows Powershell and run `ipconfig` and look for `IP address`.
+3. If you are streaming the feed to another server set the `STREAM_IP` to the public IP address for that server. Also make sure you expose port 1935 on the firewall and router if necessary for the server your sending the stream to.
+
+Lastly, to receive the stream on the device you picked above you have two options:
+
+1. [Watch the stream on streaming software such as VLC, Windows Media Player, OBS.](#watching-stream-through-streaming-software)
+2. [Watch the stream through a browser.](#watching-stream-through-web-browser)
+
+## Watching stream through streaming software
+The client machine you are using must have Docker and the compose plugin. You will now launch a container that will pick up the feed and send it to your streaming software. If you already have Nginx running on port 1935 on your machine you will have to stop that service before you start this one.
+
+```bash
+docker compose up -d nginx-stream
+```
+
+Once the client software is running you can launch the streaming application from the server side (Jetson Nano or Linux). Run the following docker command if you are using a Jetson Nano:
+
+```bash
+docker-compose up -d jetson-stream
+```
+
+Or on a linux machine:
+```bash
+docker compose up -d linux-stream
+```
+
+I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker compose down`.
+
+Lastly, on the client side you can open up your streaming software and find where you can watch a network stream or URL stream, then use the address you set up in the parameters:
+```bash
+rtmp://<STREAM_IP>:<STREAM_PORT>/<STREAM_APPLICATION>/<STREAM_KEY>
+
+# example
+rtmp://127.0.0.1:1935/live/stream
+```
+
+## Watching stream through web browser
+The client machine you are using must have Docker and the compose plugin. You will now launch a container that will start a web server on localhost port 80. If you already have Nginx running on port 1935 on your machine you will have to stop that service before you start this one.
+
+```bash
+docker compose up -d nginx-web
+```
+
+Once the client software is running you can launch the streaming application from the server side (Jetson Nano or Linux). Run the following docker command if you are using a Jetson Nano:
+
+```bash
+docker-compose up -d jetson-stream
+```
+
+Or on a linux machine:
+```bash
+docker compose up -d linux-stream
+```
+
+I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker compose down`.
+
+Lastly, on the client side navigate to the web address `http://localhost/stream.html`. If you plan on serving this stream on a live web server, following the instructions in the next section.
+
+## Streaming the feed to a web server
+If you are streaming to a remote web server most of the steps will be the same. You will clone the repo on your web server. Before you launch the service you will have to make a few changes.
+
+File `nginx/stream/stream.html`:
+- Everywhere there is a `http://localhost`, replace it with your domain name: `https://website.com`.
+- On line 20, replace the last part of the src, `stream.m3u8`, with your stream key: `<stream_key>.m3u8`. This prevents people on your same network from streaming a video to your website.
+
+File `nginx/nginx-web/nginx.conf`:
+- Whitelist your IP address by first finding your home IP address (you can do so [here](https://whatismyipaddress.com/)).
+- Under the rtmp block, aroud lines 51-54 add another line with `allow publish <your_ipv4>;`. Don't forget the semicolon.
+- Add your domain name on line 36. Replace `server_name localhost;` with `server_name website.com;`.Don't forget the semicolon.
+- If for some reason you want to change the application name edit line 57 by replacing `application live` with `application <application_name>`. Then remember to also make that change in your `.env` file for the variable STREAM_APPLICATION.
+
+Now you can launch this service on your web server:
+
+```bash
+docker compose run -d nginx-web
+```
+
+Once the client software is running you can launch the streaming application from the server side (Jetson Nano or Linux). Run the following docker command if you are using a Jetson Nano:
+
+```bash
+docker-compose up -d jetson-stream
+```
+
+Or on a linux machine:
+```bash
+docker compose up -d linux-stream
+```
+
+I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker compose down`.
+
+Lastly, you will be able to access the stream at `https://website.com/stream.html`. You can of course make changes to this and create a different route for this stream, but this is the minimum requirements.
+
 
 ## Change the default class predictor
-By default this application detects dogs. To change or add classes for detection, edit line 54 of `main.py`. For example is can be `classes=16` or `classes=[0, 14, 56]`. To include every class, change line 54 to `results = model(frame)`. The list of all possible classes are listed below:
+By default this application detects people and dogs (I made this for a home security system). To change or add classes for detection, add a CLASSES environmental variable to your `.env` file, if you don't already have it. Remove it to inference on all classes below. Otherwise, use a list to add classes you want to inference on. Such as `CLASSES=[0, 16, 17, 54, 67]`.
 
 | class_index  | class_name     |
 |--------------|----------------|
