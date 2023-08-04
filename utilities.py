@@ -9,6 +9,7 @@ from ast import literal_eval
 from models.common import Ensemble
 
 
+# custom functions
 class EnvArgumentParser():
     def __init__(self):
         self.dict = {}
@@ -46,6 +47,7 @@ class EnvArgumentParser():
         return self.define_dict(self.dict)
 
 
+# functions from YOLOv5
 def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
     shape = im.shape[:2]
     if isinstance(new_shape, int):
