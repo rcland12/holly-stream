@@ -33,13 +33,18 @@ def main(
 		stream_key
 	)
 
-	camera = Camera(
-		device_id=camera_index,
-		flip=0,
-		width=camera_width,
-		height=camera_height,
-		fps=camera_fps
-	)
+	cap = cv2.VideoCapture(camera_index)
+	camera_fps = cap.get(5)
+	camera_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+	camera_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+	# camera = Camera(
+	# 	device_id=camera_index,
+	# 	flip=0,
+	# 	width=camera_width,
+	# 	height=camera_height,
+	# 	fps=camera_fps
+	# )
 
 	command = [
 		'ffmpeg',
@@ -59,10 +64,10 @@ def main(
 
 	p = subprocess.Popen(command, stdin=subprocess.PIPE)
 
-	while camera.isReady():
-		frame = camera.read()
+	while cap.isReady():
+		ret, frame = cap.read()
 
-		if object_detection:
+		if ret == True and object_detection == True:
 			results = model(frame=frame, classes=classes)
 
 			for result in results:
@@ -90,8 +95,8 @@ def main(
 
 		p.stdin.write(frame.tobytes())
 
-	camera.release()
-	del camera
+	cap.release()
+	# del camera
 
 
 if __name__ == "__main__":
