@@ -7,8 +7,8 @@ This application will ingest your computers webcam feed (using ffmpeg), apply an
 And the following options for serving this feed:
 
 1. To the same device (localhost).
-2. To another local device.
-3. To a remote web server.
+2. To another local device (LAN).
+3. To a remote web server (WAN).
 
 Lastly, you have two options for reading in this stream (client):
 
@@ -19,10 +19,18 @@ Pick any of the previous three options and follow the instructions below to depl
 
 # Deployment
 
-## Deploying a Jetson Nano
+## Deploying on Jetson Nano
 
-If you are using a Jetson Nano you must have a camera attached. Begin by cloning the repository. Create an `.env` file to define parameter you wish to change. If you do not define a parameter it will default to a value given below. Here is a list of all possible arguments:
+If you are using a Jetson Nano you must have a camera attached. Begin by cloning the repository. Create an `.env` file to define parameters you wish to change. If you do not define a parameter it will default to a value given below, but you must define an empty `.env` file at minimum.
+
 ```bash
+touch .env
+```
+
+Here is a list of all possible arguments:
+
+```bash
+OBJECT_DETECTION=True
 MODEL=weights/yolov5n.pt
 CLASSES=[0, 16]
 
@@ -36,6 +44,11 @@ CAMERA_WIDTH=640
 CAMERA_HEIGHT=480
 CAMERA_FPS=30
 ```
+
+A few comments about the parameters:
+- The `OBJECT_DETECTION` variable is a boolean to turn that tasks on/off. If you turn it off you simply have a live stream feed.
+- The `CLASSES` variable takes in a list. If you wish to include all possible classes, remove it from the `.env` file.
+- All classes accept the data type present above. `STREAM_IP` takes a string, `STREAM_PORT` takes an integer, `STREAM_APPLICATION` takes a string, etc.
 
 If you have a GPU on your linux machine (recommended) then append the following block to the `docker-compose.yml` file under the service `linux-service`:
 ```yaml
