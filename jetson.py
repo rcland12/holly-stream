@@ -34,18 +34,19 @@ def main(
 		stream_key
 	)
 
-	cap = cv2.VideoCapture(camera_index)
-	camera_fps = cap.get(5)
-	camera_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-	camera_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+	# cap = cv2.VideoCapture(camera_index)
+	# camera_fps = cap.get(5)
+	# camera_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+	# camera_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-	# camera = Camera(
-	# 	device_id=camera_index,
-	# 	flip=0,
-	# 	width=camera_width,
-	# 	height=camera_height,
-	# 	fps=camera_fps
-	# )
+	camera = Camera(
+		device_id=camera_index,
+		flip=0,
+		width=camera_width,
+		height=camera_height,
+		fps=camera_fps,
+		enforce_fps=True
+	)
 
 	command = [
 		'ffmpeg',
@@ -65,11 +66,16 @@ def main(
 
 	p = subprocess.Popen(command, stdin=subprocess.PIPE)
 
-	while cap.isReady():
-		ret, frame = cap.read()
+	while camera.isReady():
+		frame = camera.read()
 
-		if ret == True and object_detection == True:
-			results = model(frame=frame, classes=classes)
+		if object_detection:
+			results = model(
+				frame=frame,
+				classes=classes,
+				confidence_threshold=confidence_threshold,
+				iou_threshold=iou_threshold
+			)
 
 			for result in results:
 				score = result['score']
@@ -83,21 +89,21 @@ def main(
 					color=color,
 					thickness=2
 				)
-				# frame = cv2.putText(
-				# 	img=frame,
-				# 	text=f'{label} ({str(score)})',
-				# 	org=(xmin, ymin),
-				# 	fontFace=cv2.FONT_HERSHEY_PLAIN ,
-				# 	fontScale=0.75,
-				# 	color=color,
-				# 	thickness=1,
-				# 	lineType=cv2.LINE_AA
-				# )
+				frame = cv2.putText(
+					img=frame,
+					text=f'{label} ({str(score)})',
+					org=(xmin, ymin),
+					fontFace=cv2.FONT_HERSHEY_PLAIN ,
+					fontScale=0.75,
+					color=color,
+					thickness=1,
+					lineType=cv2.LINE_AA
+				)
 
 		p.stdin.write(frame.tobytes())
 
-	cap.release()
-	# del camera
+	camera.release()
+	del camera
 
 
 if __name__ == "__main__":
