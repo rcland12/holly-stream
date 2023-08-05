@@ -57,10 +57,10 @@ def main(
 		'-vcodec', 'rawvideo',
 		'-pix_fmt', 'bgr24',
 		'-s', "{}x{}".format(camera_width, camera_height),
+		'-r', str(camera_fps),
 		'-i', '-',
 		'-c:v', 'libx264',
-		'-pix_fmt', 'yuv420p',
-		'-preset', 'ultrafast', 
+		'-pix_fmt', 'yuv420p', 
 		'-f', 'flv',
 		rtmp_url
 	]
