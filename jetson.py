@@ -44,8 +44,7 @@ def main(
 		flip=0,
 		width=camera_width,
 		height=camera_height,
-		fps=camera_fps,
-		enforce_fps=True
+		fps=camera_fps
 	)
 
 	command = [
