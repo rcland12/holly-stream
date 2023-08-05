@@ -48,8 +48,6 @@ def main(
 		enforce_fps=True
 	)
 
-	# '-r', str(camera_fps),
-
 	command = [
 		'ffmpeg',
 		'-y',
@@ -60,7 +58,8 @@ def main(
 		'-r', str(camera_fps),
 		'-i', '-',
 		'-c:v', 'libx264',
-		'-pix_fmt', 'yuv420p', 
+		'-pix_fmt', 'yuv420p',
+		'-preset', 'ultrafast', 
 		'-f', 'flv',
 		rtmp_url
 	]
