@@ -30,7 +30,7 @@ class EnvArgumentParser():
         self.dict[variable] = value
     
     def cast_type(self, arg, d_type):
-        if d_type == list or d_type == tuple:
+        if d_type == list or d_type == tuple or d_type == bool:
             try:
                 cast_value = literal_eval(arg)
                 return cast_value
