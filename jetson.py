@@ -1,4 +1,5 @@
 import cv2
+import time
 import subprocess
 
 from assets import Assets
@@ -22,10 +23,6 @@ def main(
 		camera_height,
 		camera_fps
 	):
-	
-	if object_detection:
-		assets = Assets()
-		model = ObjectDetection(model_path)
 
 	rtmp_url = "rtmp://{}:{}/{}/{}".format(
 		stream_ip,
@@ -66,16 +63,23 @@ def main(
 
 	p = subprocess.Popen(command, stdin=subprocess.PIPE)
 
-	while camera.isReady():
-		frame = camera.read()
+	# track_index = 
+	if object_detection:
+		assets = Assets()
+		model = ObjectDetection(model_path)
+		track_step = 2
+		track_index = 0
 
-		if object_detection:
-			results = model(
-				frame=frame,
-				classes=classes,
-				confidence_threshold=confidence_threshold,
-				iou_threshold=iou_threshold
-			)
+		while camera.isReady():
+			frame = camera.read()
+
+			if track_index % track_step == 0:
+				results = model(
+					frame=frame,
+					classes=classes,
+					confidence_threshold=confidence_threshold,
+					iou_threshold=iou_threshold
+				)
 
 			for result in results:
 				score = result['score']
@@ -100,10 +104,17 @@ def main(
 					lineType=cv2.LINE_AA
 				)
 
-		p.stdin.write(frame.tobytes())
+			p.stdin.write(frame.tobytes())
+			track_index += 1
+
+	else:
+		while camera.isReady():
+			frame = camera.read()
+			p.stdin.write(frame.tobytes())
 
 	camera.release()
 	del camera
+
 
 
 if __name__ == "__main__":
