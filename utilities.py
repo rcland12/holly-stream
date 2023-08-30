@@ -180,7 +180,7 @@ def non_max_suppression(
         scale=False,
         normalize=False
 ):
-    bs = 1
+    bs = prediction.shape[0]
     xc = prediction[..., 4] > conf_thres
 
     # Settings
