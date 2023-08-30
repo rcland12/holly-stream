@@ -77,6 +77,31 @@ RUN apt-get install -y libjpeg-dev zlib1g-dev libpython3-dev libfreetype6-dev &&
 
 RUN pip3 install nanocamera
 
+RUN apt-get install -y --no-install-recommends \
+    software-properties-common \
+    autoconf \
+    automake \
+    build-essential \
+    cmake \
+    git \
+    libb64-dev \
+    libre2-dev \
+    libssl-dev \
+    libtool \
+    libboost-dev \
+    libcurl4-openssl-dev \
+    rapidjson-dev \
+    patchelf \
+    zlib1g-dev
+
+RUN wget https://github.com/triton-inference-server/server/releases/download/v2.16.0/tritonserver2.16.0-jetpack4.6.tgz && \
+    tar -xzf tritonserver2.16.0-jetpack4.6.tgz
+
+ENV BACKEND_PATH=/root/build/tritonserver2.16.0-jetpack4.6/backends
+
+RUN pip3 install --upgrade grpcio-tools numpy==1.19.4 future attrdict && \
+    python3 -m pip install --upgrade  /root/build/tritonserver2.16.0-jetpack4.6/clients/python/tritonclient-2.16.0-py3-none-any.whl[all]
+
 WORKDIR ${APPDIR}
 COPY assets.py model.py utilities.py jetson.py ./
 COPY models/ ./models/
