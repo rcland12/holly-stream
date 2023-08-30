@@ -61,7 +61,6 @@ import numpy
 from utilities import (
     letterbox,
     non_max_suppression,
-    scale_coords,
     TritonRemoteModel
 )
 
