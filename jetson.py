@@ -61,8 +61,6 @@ def main(
 
 		while camera.isReady():
 			frame = camera.read()
-			print("SUCCESSFUL FRAME!")
-			print(frame)
 
 			results = model(frame)
 
