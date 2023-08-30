@@ -75,7 +75,7 @@ class ObjectDetection():
 
     def __call__(self, frame, classes=None, confidence_threshold=0.3, iou_threshold=0.45):
         img0 = frame[:, :, ::-1].copy()
-        img = letterbox(img0)[0]
+        img = letterbox(img0, auto=False)
         img = img.transpose((2, 0, 1))[::-1]
         img = numpy.ascontiguousarray(img)
         img = torch.from_numpy(img).to(self.device)
@@ -83,7 +83,7 @@ class ObjectDetection():
         img /= 255
         if len(img.shape) == 3:
             img = img[None,:,:,:]
-
+        print(img.shape)
         boxes, scores, labels = self.model(
 			img.cpu().numpy()
 		)
