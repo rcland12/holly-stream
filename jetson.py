@@ -61,10 +61,10 @@ def main(
 
 		while camera.isReady():
 			frame = camera.read()
+			print("SUCCESSFUL FRAME!")
+			print(frame)
 
-			boxes, scores, labels = model(
-				numpy.array([frame], dtype='uint8')
-			)
+			results = model(frame)
 
 			boxes = boxes.tolist()[0]
 			scores = scores.tolist()[0]
