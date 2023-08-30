@@ -87,7 +87,7 @@ class ObjectDetection():
         preds = self.model(
 			img.cpu().numpy()
 		)
-
+        print(preds)
         preds = non_max_suppression(
             preds,
             conf_thres=confidence_threshold,
