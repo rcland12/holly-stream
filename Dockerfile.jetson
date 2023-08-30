@@ -99,7 +99,8 @@ RUN wget https://github.com/triton-inference-server/server/releases/download/v2.
 
 ENV BACKEND_PATH=/root/build/tritonserver2.16.0-jetpack4.6/backends
 
-RUN pip3 uninstall numpy
+RUN rm -rf /usr/lib/python3/dist-packages/numpy && \
+    rm -rf /usr/lib/python3/dist-packages/numpy-1.13.3.egg-info
 
 RUN pip3 install --upgrade wheel setuptools cython && \
     pip3 install --upgrade grpcio-tools numpy==1.19.4 future attrdict && \
