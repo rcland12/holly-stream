@@ -35,38 +35,10 @@ instance_group [
   }
 ]
 
-model_warmup [
-{
-    name : "preprocess model warmup"
-    batch_size: 1
-    count: 1
-    inputs {
-      key: "INPUT_0"
-      value: {
-        data_type: TYPE_UINT8
-        dims: 1015
-        dims: 671
-        dims: 3
-        input_data_file: "input_0"
-      }
-    }
-    inputs {
-      key: "INPUT_1"
-      value: {
-        data_type: TYPE_INT16
-        dims: 2
-        input_data_file: "input_1"
-      }
-    }
-    inputs {
-      key: "INPUT_2"
-      value: {
-        data_type: TYPE_STRING
-        dims: 1
-        input_data_file: "input_2"
-      }
-    }
-}]
 version_policy: { 
   latest: { num_versions: 1 }
+}
+
+response_cache { 
+  enable: True
 }

@@ -35,24 +35,6 @@ instance_group [
   }
 ]
 
-model_warmup [
-  {
-    name : "postprocess model warmup 1"
-    batch_size: 1
-    count: 1
-    inputs {
-      key: "INPUT_3"
-      value: {
-          data_type: TYPE_FP32
-          dims: 1
-          dims: 25200
-          dims: 6
-          input_data_file: "input_3"
-      }
-    }
-  }
-]
-
 version_policy: { 
   latest: { num_versions: 1 }
 }

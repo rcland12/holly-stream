@@ -184,10 +184,10 @@ class TritonPythonModel:
 
             results = non_max_suppression(
                 torch.tensor([
-                    pb_utils.get_input_tensor_by_name(request, "INPUT_{}".format(model)).as_numpy()
-                    for model in range(3, self.num_inputs)
+                    pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy()
                 ])
             )
+            
             inference_response = pb_utils.InferenceResponse(
                 output_tensors=[
                     pb_utils.Tensor("OUTPUT_0", results[:, :4]),
