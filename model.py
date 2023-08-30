@@ -87,7 +87,6 @@ class ObjectDetection():
 			img.cpu().numpy()
 		)
         preds = preds[None,:,:]
-        print(preds.shape)
         preds = non_max_suppression(
             preds,
             img0.shape,
