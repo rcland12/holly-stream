@@ -23,14 +23,6 @@ class TritonRemoteModel:
             self.client = InferenceServerClient(parsed_url.netloc)  # Triton GRPC client
             self.model_name = model
             self.metadata = self.client.get_model_metadata(self.model_name, as_json=True)
-            self.config = self.client.get_model_config(self.model_name, as_json=True)
-            self.classes = self.config["config"]["parameters"]["classes"]["string_value"]
-            try:
-                model = self.config["config"]["ensemble_scheduling"]["step"][1]["model_name"]
-                model_config = self.client.get_model_config(model, as_json=True)
-                self.model_dims = model_config["config"]["input"][0]["dims"][1:3]
-            except:
-                pass
 
         else:
             from tritonclient.http import InferenceServerClient
@@ -38,14 +30,6 @@ class TritonRemoteModel:
             self.client = InferenceServerClient(parsed_url.netloc)  # Triton HTTP client
             self.model_name = model
             self.metadata = self.client.get_model_metadata(self.model_name)
-            self.config = self.client.get_model_config(self.model_name)
-            self.classes = self.config["parameters"]["classes"]["string_value"]
-            try:
-                model = self.config["ensemble_scheduling"]["step"][1]["model_name"]
-                model_config = self.client.get_model_config(model)
-                self.model_dims = model_config["input"][0]["dims"][2:4]
-            except:
-                pass
     
     @property
     def runtime(self):
