@@ -95,13 +95,14 @@ RUN apt-get install -y --no-install-recommends \
     zlib1g-dev
 
 RUN wget https://github.com/triton-inference-server/server/releases/download/v2.16.0/tritonserver2.16.0-jetpack4.6.tgz && \
-    tar -xzf tritonserver2.16.0-jetpack4.6.tgz
+    mkdir tritonserver && \
+    tar -xzf tritonserver2.16.0-jetpack4.6.tgz -C ${BUILDDIR}/tritonserver/
 
-ENV BACKEND_PATH=/root/build/tritonserver2.16.0-jetpack4.6/backends
+ENV BACKEND_PATH=${BUILDDIR}/tritonserver/backends
 
 RUN pip3 install --upgrade pip && \
     pip3 install --upgrade grpcio-tools numpy==1.19.4 future attrdict && \
-    pip3 install --upgrade /root/build/tritonserver2.16.0-jetpack4.6/clients/python/tritonclient-2.16.0-py3-none-any.whl[all]
+    pip3 install --upgrade ${BUILDDIR}/tritonserver/clients/python/tritonclient-2.16.0-py3-none-any.whl[all]
 
 WORKDIR ${APPDIR}
 COPY assets.py model.py utilities.py jetson.py ./
