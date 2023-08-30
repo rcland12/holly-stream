@@ -4,8 +4,8 @@ import subprocess
 
 from assets import Assets
 from nanocamera import Camera
-# from model import ObjectDetection
-from utilities import EnvArgumentParser, TritonRemoteModel
+from model import ObjectDetection
+from utilities import EnvArgumentParser
 
 
 def main(
@@ -55,8 +55,8 @@ def main(
 
 	if object_detection:
 		assets = Assets()
-		# model = ObjectDetection(model_path)
-		model = TritonRemoteModel(url=f"http://localhost:8000", model="yolov5n")
+		model = ObjectDetection(model_path)
+		# model = TritonRemoteModel(url=f"http://localhost:8000", model="yolov5n")
 
 		while camera.isReady():
 			frame = camera.read()

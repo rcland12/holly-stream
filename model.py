@@ -62,14 +62,16 @@ from utilities import (
     attempt_load,
     letterbox,
     non_max_suppression,
-    scale_coords
+    scale_coords,
+    TritonRemoteModel
 )
 
 
 class ObjectDetection():
     def __init__(self, model):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = attempt_load(weights=model, device=self.device)
+        # self.model = attempt_load(weights=model, device=self.device)
+        self.model = TritonRemoteModel(url=f"http://localhost:8000", model="yolov5n")
         self.classes = self.model.names
 
     def __call__(self, frame, classes=None, confidence_threshold=0.3, iou_threshold=0.45):
@@ -83,7 +85,8 @@ class ObjectDetection():
         if len(img.shape) == 3:
             img = img[None,:,:,:]
 
-        preds = self.model(img, augment=True)[0]
+        preds = self.model(img)
+        print(preds)
         preds = non_max_suppression(
             preds,
             conf_thres=confidence_threshold,
