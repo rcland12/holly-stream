@@ -67,11 +67,11 @@ from utilities import (
 
 
 class ObjectDetection():
-    def __init__(self, model_name):
+    def __init__(self, model_name, classes):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         # self.model = attempt_load(weights=model, device=self.device)
         self.model = TritonRemoteModel(url="http://localhost:8000", model=model_name)
-        self.classes = self.model.names
+        self.classes = classes
 
     def __call__(self, frame, classes=None, confidence_threshold=0.3, iou_threshold=0.45):
         img0 = frame[:, :, ::-1].copy()

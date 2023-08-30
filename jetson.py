@@ -56,7 +56,7 @@ def main(
 
 	if object_detection:
 		assets = Assets()
-		model = ObjectDetection(model_name)
+		model = ObjectDetection(model_name, assets.classes)
 		# model = TritonRemoteModel(url=f"http://localhost:8000", model="yolov5n")
 
 		while camera.isReady():
