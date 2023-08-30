@@ -180,6 +180,7 @@ def non_max_suppression(
         scale=False,
         normalize=False
 ):
+    bs = 1
     xc = prediction[..., 4] > conf_thres
 
     # Settings
@@ -187,7 +188,7 @@ def non_max_suppression(
     redundant = True
     merge = True
 
-    output = [torch.zeros((0, 6), device=prediction.device)]
+    output = [torch.zeros((0, 6), device=prediction.device)] * bs
     for xi, x in enumerate(prediction):
         # Apply constraints
         x = x[xc[xi]]
