@@ -1,11 +1,10 @@
 import json
 import torch
-import numpy as np
-
-from torchvision.ops import nms
-from ensemble_boxes import weighted_boxes_fusion
 
 import triton_python_backend_utils as pb_utils
+
+from torchvision.ops import nms
+
 
 
 # def xywh2xyxy(x):
@@ -189,18 +188,11 @@ class TritonPythonModel:
                     for model in range(3, self.num_inputs)
                 ])
             )
-            
-            boxes, scores, labels = weighted_boxes_fusion(
-                [result[:, :4] for result in results],
-                [result[:, 4] for result in results],
-                [result[:, 5] for result in results]
-            )
-
             inference_response = pb_utils.InferenceResponse(
                 output_tensors=[
-                    pb_utils.Tensor("OUTPUT_0", boxes),
-                    pb_utils.Tensor("OUTPUT_1", scores),
-                    pb_utils.Tensor("OUTPUT_2", labels)
+                    pb_utils.Tensor("OUTPUT_0", results[:, :4]),
+                    pb_utils.Tensor("OUTPUT_1", results[:, 4]),
+                    pb_utils.Tensor("OUTPUT_2", results[:, 5])
                 ]
             )
             responses.append(inference_response)
