@@ -83,9 +83,10 @@ class ObjectDetection():
         img /= 255
         if len(img.shape) == 3:
             img = img[None,:,:,:]
+        print(img)
 
         boxes, scores, labels = self.model(
-			numpy.array([img], dtype='float32')
+			numpy.array(img, dtype='float32')
 		)
 
         boxes = boxes.tolist()[0]
