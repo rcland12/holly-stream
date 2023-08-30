@@ -86,6 +86,8 @@ class ObjectDetection():
         preds = self.model(
 			img.cpu().numpy()
 		)
+        print(preds)
+        print(preds.shape)
 
         preds = non_max_suppression(
             preds,
@@ -98,7 +100,6 @@ class ObjectDetection():
             normalize=False
         )
         print(preds)
-        print(preds.shape)
 
         bboxes = [item[:4] for item in preds]
         conf = [round(float(item[4]), 2) for item in preds]
