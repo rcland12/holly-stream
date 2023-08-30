@@ -86,7 +86,7 @@ class ObjectDetection():
         print(img)
 
         boxes, scores, labels = self.model(
-			numpy.array(img, dtype='float32')
+			img
 		)
 
         boxes = boxes.tolist()[0]
