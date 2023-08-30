@@ -102,9 +102,8 @@ ENV BACKEND_PATH=/root/build/tritonserver2.16.0-jetpack4.6/backends
 RUN rm -rf /usr/lib/python3/dist-packages/numpy && \
     rm -rf /usr/lib/python3/dist-packages/numpy-1.13.3.egg-info
 
-RUN pip3 install --upgrade wheel setuptools cython && \
-    pip3 install --upgrade grpcio-tools numpy==1.19.4 future attrdict && \
-    python3 -m pip install --upgrade  /root/build/tritonserver2.16.0-jetpack4.6/clients/python/tritonclient-2.16.0-py3-none-any.whl[all]
+RUN python3 -m pip install --upgrade grpcio-tools numpy==1.19.4 future attrdict && \
+    python3 -m pip install --upgrade /root/build/tritonserver2.16.0-jetpack4.6/clients/python/tritonclient-2.16.0-py3-none-any.whl[all]
 
 WORKDIR ${APPDIR}
 COPY assets.py model.py utilities.py jetson.py ./
