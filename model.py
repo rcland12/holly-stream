@@ -83,18 +83,10 @@ class ObjectDetection():
         img /= 255
         if len(img.shape) == 3:
             img = img[None,:,:,:]
-        print(img.shape)
-        boxes, scores, labels = self.model(
+
+        preds = self.model(
 			img.cpu().numpy()
 		)
-
-        boxes = boxes.tolist()[0]
-        scores = scores.tolist()[0]
-        labels = labels.tolist()[0]
-
-        print(boxes)
-        print(scores)
-        print(labels)
 
         preds = non_max_suppression(
             preds,
