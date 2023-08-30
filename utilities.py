@@ -1,5 +1,6 @@
 import os
 import cv2
+import typing
 import numpy as np
 
 import torch
@@ -8,6 +9,77 @@ import torchvision
 from ast import literal_eval
 from models.common import Ensemble
 
+from urllib.parse import urlparse
+from tritonclient.grpc import InferInput
+from tritonclient.http import InferInput
+
+
+class TritonRemoteModel:
+    def __init__(self, url: str, model: str):
+        parsed_url = urlparse(url)
+        if parsed_url.scheme == "grpc":
+            from tritonclient.grpc import InferenceServerClient
+
+            self.client = InferenceServerClient(parsed_url.netloc)  # Triton GRPC client
+            self.model_name = model
+            self.metadata = self.client.get_model_metadata(self.model_name, as_json=True)
+            self.config = self.client.get_model_config(self.model_name, as_json=True)
+            self.classes = self.config["config"]["parameters"]["classes"]["string_value"]
+            try:
+                model = self.config["config"]["ensemble_scheduling"]["step"][1]["model_name"]
+                model_config = self.client.get_model_config(model, as_json=True)
+                self.model_dims = model_config["config"]["input"][0]["dims"][1:3]
+            except:
+                pass
+
+        else:
+            from tritonclient.http import InferenceServerClient
+
+            self.client = InferenceServerClient(parsed_url.netloc)  # Triton HTTP client
+            self.model_name = model
+            self.metadata = self.client.get_model_metadata(self.model_name)
+            self.config = self.client.get_model_config(self.model_name)
+            self.classes = self.config["parameters"]["classes"]["string_value"]
+            try:
+                model = self.config["ensemble_scheduling"]["step"][1]["model_name"]
+                model_config = self.client.get_model_config(model)
+                self.model_dims = model_config["input"][0]["dims"][2:4]
+            except:
+                pass
+    
+    @property
+    def runtime(self):
+        return self.metadata.get("backend", self.metadata.get("platform"))
+
+    def __call__(self, *args, **kwargs) -> typing.Union[torch.Tensor, typing.Tuple[torch.Tensor, ...]]:
+        inputs = self._create_inputs(*args, **kwargs)
+        response = self.client.infer(model_name=self.model_name, inputs=inputs)
+        result = []
+        for output in self.metadata['outputs']:
+            tensor = torch.as_tensor(response.as_numpy(output['name']))
+            result.append(tensor)
+        return result[0][0] if len(result) == 1 else result
+
+    def _create_inputs(self, *args, **kwargs):
+        args_len, kwargs_len = len(args), len(kwargs)
+        if not args_len and not kwargs_len:
+            raise RuntimeError("No inputs provided.")
+        if args_len and kwargs_len:
+            raise RuntimeError("Cannot specify args and kwargs at the same time")
+        
+        placeholders = [
+            InferInput(i['name'], [int(s) for s in args[index].shape], i['datatype']) for index, i in enumerate(self.metadata['inputs'])
+        ]
+        if args_len:
+            if args_len != len(placeholders):
+                raise RuntimeError(f"Expected {len(placeholders)} inputs, got {args_len}.")
+            for input, value in zip(placeholders, args):
+                input.set_data_from_numpy(value)
+        else:
+            for input in placeholders:
+                value = kwargs[input.name]
+                input.set_data_from_numpy(value)
+        return placeholders
 
 # custom functions
 class EnvArgumentParser():

@@ -1,19 +1,15 @@
 import cv2
-import time
+import numpy
 import subprocess
 
 from assets import Assets
 from nanocamera import Camera
-from model import ObjectDetection
-from utilities import EnvArgumentParser
+# from model import ObjectDetection
+from utilities import EnvArgumentParser, TritonRemoteModel
 
 
 def main(
 		object_detection,
-		model_path,
-		classes,
-		confidence_threshold,
-		iou_threshold,
 		stream_ip,
 		stream_port,
 		stream_application,
@@ -31,18 +27,12 @@ def main(
 		stream_key
 	)
 
-	# cap = cv2.VideoCapture(camera_index)
-	# camera_fps = cap.get(5)
-	# camera_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-	# camera_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
 	camera = Camera(
 		device_id=camera_index,
 		flip=0,
 		width=camera_width,
 		height=camera_height,
-		fps=camera_fps,
-		enforce_fps=True
+		fps=camera_fps
 	)
 
 	command = [
@@ -63,29 +53,36 @@ def main(
 
 	p = subprocess.Popen(command, stdin=subprocess.PIPE)
 
-	# track_index = 
 	if object_detection:
 		assets = Assets()
-		model = ObjectDetection(model_path)
-		track_step = 2
-		track_index = 0
+		# model = ObjectDetection(model_path)
+		model = TritonRemoteModel(url=f"http://localhost:8000", model="yolov5n")
 
 		while camera.isReady():
 			frame = camera.read()
 
-			if track_index % track_step == 0:
-				results = model(
-					frame=frame,
-					classes=classes,
-					confidence_threshold=confidence_threshold,
-					iou_threshold=iou_threshold
-				)
+			boxes, scores, labels = model(
+				numpy.array([frame], dtype='uint8')
+			)
 
-			for result in results:
-				score = result['score']
-				label = result['label']
-				xmin, ymin, xmax, ymax = result['bbox']
-				color = assets.colors[assets.classes.index(label)]
+			boxes = boxes.tolist()[0]
+			scores = scores.tolist()[0]
+			labels = labels.tolist()[0]
+
+			print(boxes)
+			print(scores)
+			print(labels)
+
+			conf = [float(item) for item in scores]
+			obj = [int(item) for item in labels]
+			names = [assets.classes[item] for item in obj]
+
+			for box, index in enumerate(boxes):
+				score = float(scores[index])
+				label_idx = int(labels[index])
+				label = assets.classes[label_idx]
+				color = assets.colors[label_idx]
+				xmin, ymin, xmax, ymax = box
 				frame = cv2.rectangle(
 					img=frame,
 					pt1=(xmin, ymin),
@@ -105,7 +102,6 @@ def main(
 				)
 
 			p.stdin.write(frame.tobytes())
-			track_index += 1
 
 	else:
 		while camera.isReady():
@@ -136,10 +132,6 @@ if __name__ == "__main__":
 
 	main(
 		args.OBJECT_DETECTION,
-		args.MODEL,
-		args.CLASSES,
-		args.CONFIDENCE_THRESHOLD,
-		args.IOU_THRESHOLD,
 		args.STREAM_IP,
 		args.STREAM_PORT,
 		args.STREAM_APPLICATION,
