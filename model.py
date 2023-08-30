@@ -80,6 +80,8 @@ class ObjectDetection():
         img = torch.from_numpy(img).to(self.device)
         img = img.float()
         img /= 255
+        if len(img.shape) == 3:
+            img = img[None,:,:,:]
 
         preds = self.model(
 			img.cpu().numpy()
