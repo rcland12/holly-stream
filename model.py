@@ -87,15 +87,18 @@ class ObjectDetection():
         preds = self.model(
 			img.cpu().numpy()
 		)
-        print(preds)
+        print(preds.shape)
         preds = non_max_suppression(
             preds,
+            img0.shape,
+            img.shape,
             conf_thres=confidence_threshold,
             iou_thres=iou_threshold,
-            classes=classes,
-            nc=len(self.classes)
+            classes=None,
+            scale=True,
+            normalize=False
         )[0]
-        preds[:, :4] = scale_coords(img.shape[2:], preds[:, :4], img0.shape).round()
+        print(preds)
 
         height, width = img0.shape[:2]
         bboxes = [item[:4] for item in preds]
