@@ -10,6 +10,7 @@ from utilities import EnvArgumentParser
 
 def main(
 		object_detection,
+		model_name,
 		stream_ip,
 		stream_port,
 		stream_application,
@@ -55,7 +56,7 @@ def main(
 
 	if object_detection:
 		assets = Assets()
-		model = ObjectDetection(model_path)
+		model = ObjectDetection(model_name)
 		# model = TritonRemoteModel(url=f"http://localhost:8000", model="yolov5n")
 
 		while camera.isReady():
@@ -132,6 +133,7 @@ if __name__ == "__main__":
 
 	main(
 		args.OBJECT_DETECTION,
+		args.MODEL,
 		args.STREAM_IP,
 		args.STREAM_PORT,
 		args.STREAM_APPLICATION,

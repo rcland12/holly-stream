@@ -59,7 +59,6 @@ import numpy
 
 
 from utilities import (
-    attempt_load,
     letterbox,
     non_max_suppression,
     scale_coords,
@@ -68,10 +67,10 @@ from utilities import (
 
 
 class ObjectDetection():
-    def __init__(self, model):
+    def __init__(self, model_name):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         # self.model = attempt_load(weights=model, device=self.device)
-        self.model = TritonRemoteModel(url=f"http://localhost:8000", model="yolov5n")
+        self.model = TritonRemoteModel(url="http://localhost:8000", model=model_name)
         self.classes = self.model.names
 
     def __call__(self, frame, classes=None, confidence_threshold=0.3, iou_threshold=0.45):
