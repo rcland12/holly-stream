@@ -80,13 +80,11 @@ class ObjectDetection():
         img = torch.from_numpy(img).to(self.device)
         img = img.float()
         img /= 255
-        if len(img.shape) == 3:
-            img = img[None,:,:,:]
 
         preds = self.model(
 			img.cpu().numpy()
 		)
-        print(preds.shape)
+
         preds = non_max_suppression(
             preds,
             img0.shape,
@@ -96,10 +94,10 @@ class ObjectDetection():
             classes=None,
             scale=True,
             normalize=False
-        )[0]
+        )
         print(preds)
+        print(preds.shape)
 
-        height, width = img0.shape[:2]
         bboxes = [item[:4] for item in preds]
         conf = [round(float(item[4]), 2) for item in preds]
         obj = [int(item[5]) for item in preds]

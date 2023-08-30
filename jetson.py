@@ -57,31 +57,18 @@ def main(
 	if object_detection:
 		assets = Assets()
 		model = ObjectDetection(model_name, assets.classes)
-		# model = TritonRemoteModel(url=f"http://localhost:8000", model="yolov5n")
 
 		while camera.isReady():
 			frame = camera.read()
 
 			results = model(frame)
+			print(results)
 
-			boxes = boxes.tolist()[0]
-			scores = scores.tolist()[0]
-			labels = labels.tolist()[0]
-
-			print(boxes)
-			print(scores)
-			print(labels)
-
-			conf = [float(item) for item in scores]
-			obj = [int(item) for item in labels]
-			names = [assets.classes[item] for item in obj]
-
-			for box, index in enumerate(boxes):
-				score = float(scores[index])
-				label_idx = int(labels[index])
-				label = assets.classes[label_idx]
-				color = assets.colors[label_idx]
-				xmin, ymin, xmax, ymax = box
+			for result in results:
+				score = result['score']
+				label = result['label']
+				xmin, ymin, xmax, ymax = result['bbox']
+				color = assets.colors[assets.classes.index(label)]
 				frame = cv2.rectangle(
 					img=frame,
 					pt1=(xmin, ymin),

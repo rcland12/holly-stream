@@ -181,6 +181,7 @@ def non_max_suppression(
         normalize=False
 ):
     bs = prediction.shape[0]
+    print(bs)
     xc = prediction[..., 4] > conf_thres
 
     # Settings
