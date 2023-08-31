@@ -42,10 +42,10 @@ class TritonRemoteModel:
             jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{model}/{label_filename}")
             if os.path.isfile(docker_file_path):
                 with open(docker_file_path, "r") as file:
-                    self.classes = file.readlines()
+                    self.classes = file.read().splitlines()
             elif os.path.isfile(jetson_file_path):
-                with open(docker_file_path, "r") as file:
-                    self.classes = file.readlines()
+                with open(jetson_file_path, "r") as file:
+                    self.classes = file.read().splitlines()
             else:
                     raise "Class labels file is invalid or is in the wrong location."
         except:
