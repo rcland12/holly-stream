@@ -7,9 +7,13 @@ from model import ObjectDetection
 from utilities import EnvArgumentParser
 
 
+
 def main(
 		object_detection,
 		model_name,
+		classes,
+		confidence_threshold,
+		iou_threshold,
 		stream_ip,
 		stream_port,
 		stream_application,
@@ -55,16 +59,25 @@ def main(
 
 	if object_detection:
 		assets = Assets()
-		model = ObjectDetection(model_name, assets.classes)
+		model = ObjectDetection(
+			model_name=model_name,
+			all_classes=assets.classes,
+			classes=classes,
+			camera_width=camera_width,
+			camera_height=camera_height,
+			confidence_threshold=confidence_threshold,
+			iou_threshold=iou_threshold,
+			triton_url="http://localhost:8000"
+		)
 
 		while camera.isReady():
 			frame = camera.read()
 
-			bboxes, confs, names = model(frame)
+			bboxes, confs, indexes = model(frame)
 
 			for i in range(len(bboxes)):
 				xmin, ymin, xmax, ymax = bboxes[i]
-				color = assets.colors[assets.classes.index(names[i])]
+				color = assets.colors[indexes]
 				frame = cv2.rectangle(
 					img=frame,
 					pt1=(xmin, ymin),
@@ -74,7 +87,7 @@ def main(
 				)
 				frame = cv2.putText(
 					img=frame,
-					text=f'{names[i]} ({str(confs[i])})',
+					text=f'{assets.classes[indexes]} ({str(confs[i])})',
 					org=(xmin, ymin),
 					fontFace=cv2.FONT_HERSHEY_PLAIN ,
 					fontScale=0.75,
@@ -94,11 +107,10 @@ def main(
 	del camera
 
 
-
 if __name__ == "__main__":
 	parser = EnvArgumentParser()
 	parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
-	parser.add_arg("MODEL", default="weights/yolov5n.pt", type=str)
+	parser.add_arg("MODEL", default="yolov5n", type=str)
 	parser.add_arg("CLASSES", default=None, type=list)
 	parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
 	parser.add_arg("IOU_THRESHOLD", default=0.45, type=float)
@@ -115,6 +127,9 @@ if __name__ == "__main__":
 	main(
 		args.OBJECT_DETECTION,
 		args.MODEL,
+		args.CLASSES,
+		args.CONFIDENCE_THRESHOLD,
+		args.IOU_THRESHOLD,
 		args.STREAM_IP,
 		args.STREAM_PORT,
 		args.STREAM_APPLICATION,

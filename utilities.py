@@ -1,8 +1,8 @@
 import os
 import cv2
+import numpy
 import torch
 import typing
-import numpy as np
 
 from ast import literal_eval
 from torchvision.ops import nms
@@ -11,58 +11,7 @@ from tritonclient.grpc import InferInput
 from tritonclient.http import InferInput
 
 
-class TritonRemoteModel:
-    def __init__(self, url: str, model: str):
-        parsed_url = urlparse(url)
-        if parsed_url.scheme == "grpc":
-            from tritonclient.grpc import InferenceServerClient
 
-            self.client = InferenceServerClient(parsed_url.netloc)  # Triton GRPC client
-            self.model_name = model
-            self.metadata = self.client.get_model_metadata(self.model_name, as_json=True)
-
-        else:
-            from tritonclient.http import InferenceServerClient
-
-            self.client = InferenceServerClient(parsed_url.netloc)  # Triton HTTP client
-            self.model_name = model
-            self.metadata = self.client.get_model_metadata(self.model_name)
-    
-    @property
-    def runtime(self):
-        return self.metadata.get("backend", self.metadata.get("platform"))
-
-    def __call__(self, *args, **kwargs) -> typing.Union[torch.Tensor, typing.Tuple[torch.Tensor, ...]]:
-        inputs = self._create_inputs(*args, **kwargs)
-        response = self.client.infer(model_name=self.model_name, inputs=inputs)
-        result = []
-        for output in self.metadata['outputs']:
-            tensor = torch.as_tensor(response.as_numpy(output['name']))
-            result.append(tensor)
-        return result[0][0] if len(result) == 1 else result
-
-    def _create_inputs(self, *args, **kwargs):
-        args_len, kwargs_len = len(args), len(kwargs)
-        if not args_len and not kwargs_len:
-            raise RuntimeError("No inputs provided.")
-        if args_len and kwargs_len:
-            raise RuntimeError("Cannot specify args and kwargs at the same time")
-        
-        placeholders = [
-            InferInput(i['name'], [int(s) for s in args[index].shape], i['datatype']) for index, i in enumerate(self.metadata['inputs'])
-        ]
-        if args_len:
-            if args_len != len(placeholders):
-                raise RuntimeError(f"Expected {len(placeholders)} inputs, got {args_len}.")
-            for input, value in zip(placeholders, args):
-                input.set_data_from_numpy(value)
-        else:
-            for input in placeholders:
-                value = kwargs[input.name]
-                input.set_data_from_numpy(value)
-        return placeholders
-
-# custom functions
 class EnvArgumentParser():
     def __init__(self):
         self.dict = {}
@@ -100,37 +49,6 @@ class EnvArgumentParser():
         return self.define_dict(self.dict)
 
 
-# functions from YOLOv5
-def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
-    shape = im.shape[:2]
-    if isinstance(new_shape, int):
-        new_shape = (new_shape, new_shape)
-    
-    r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
-    if not scaleup:
-        r = min(r, 1.0)
-    
-    ratio = r, r
-    new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
-    dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]
-    if auto:
-        dw, dh = np.mod(dw, stride), np.mod(dh, stride)
-    elif scaleFill:
-        dw, dh = 0.0, 0.0
-        new_unpad = (new_shape[1], new_shape[0])
-        ratio = new_shape[1] / shape[1], new_shape[0] / shape[0]
-    
-    dw /= 2
-    dh /= 2
-    
-    if shape[::-1] != new_unpad:
-        im = cv2.resize(im, new_unpad, interpolation=cv2.INTER_LINEAR)
-    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
-    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
-    im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
-    return im
-
-
 def box_area(box):
     return (box[2] - box[0]) * (box[3] - box[1])
 
@@ -151,7 +69,7 @@ def xywh2xyxy(x):
 
 
 def non_max_suppression(
-        prediction,
+        predictions,
         img0_shape,
         img1_shape,
         conf_thres,
@@ -159,18 +77,18 @@ def non_max_suppression(
         classes=None,
         max_det=300,
         max_nms=30000,
-        scale=False,
-        normalize=False
+        scale=False
 ):
-    xc = prediction[..., 4] > conf_thres
+    predictions = predictions[None,:,:]
+    xc = predictions[..., 4] > conf_thres
 
     # Settings
     max_nms = 30000
     redundant = True
     merge = True
 
-    output = [torch.zeros((0, 6), device=prediction.device)]
-    for xi, x in enumerate(prediction):
+    output = [torch.zeros((0, 6), device=predictions.device)]
+    for xi, x in enumerate(predictions):
         # Apply constraints
         x = x[xc[xi]]
 
@@ -222,9 +140,62 @@ def non_max_suppression(
             tensor[..., [0, 2]] = tensor[..., [0, 2]].clip(0, img0_shape[0])
             tensor[..., [1, 3]] = tensor[..., [1, 3]].clip(0, img0_shape[1])
 
-        if normalize:
-            tensor[:, :4] = tensor[:, :4] @ np.diag([1/img0_shape[0], 1/img0_shape[1], 1/img0_shape[0], 1/img0_shape[1]])
-
         tensor = tensor.numpy()
 
     return output[0]
+
+
+class TritonRemoteModel:
+    def __init__(self, url: str, model: str):
+        parsed_url = urlparse(url)
+        if parsed_url.scheme == "grpc":
+            from tritonclient.grpc import InferenceServerClient
+
+        elif parsed_url.scheme == "http":
+            from tritonclient.http import InferenceServerClient
+        
+        else:
+            raise "Unsupported protocol. Use HTTP or GRPC."
+
+        self.client = InferenceServerClient(parsed_url.netloc)  # Triton GRPC client
+        self.model_name = model
+        self.metadata = self.client.get_model_metadata(self.model_name, as_json=True)
+        self.config = self.client.get_model_config(self.model_name, as_json=True)
+        try:
+            self.model_dims = self.config["config"]["input"][0]["dims"][2:4]
+        except:
+            self.model_dims = (640, 640)
+    
+    @property
+    def runtime(self):
+        return self.metadata.get("backend", self.metadata.get("platform"))
+
+    def __call__(self, *args, **kwargs) -> typing.Union[torch.Tensor, typing.Tuple[torch.Tensor, ...]]:
+        inputs = self._create_inputs(*args, **kwargs)
+        response = self.client.infer(model_name=self.model_name, inputs=inputs)
+        result = []
+        for output in self.metadata['outputs']:
+            tensor = torch.as_tensor(response.as_numpy(output['name']))
+            result.append(tensor)
+        return result[0][0] if len(result) == 1 else result
+
+    def _create_inputs(self, *args, **kwargs):
+        args_len, kwargs_len = len(args), len(kwargs)
+        if not args_len and not kwargs_len:
+            raise RuntimeError("No inputs provided.")
+        if args_len and kwargs_len:
+            raise RuntimeError("Cannot specify args and kwargs at the same time")
+        
+        placeholders = [
+            InferInput(i['name'], [int(s) for s in args[index].shape], i['datatype']) for index, i in enumerate(self.metadata['inputs'])
+        ]
+        if args_len:
+            if args_len != len(placeholders):
+                raise RuntimeError(f"Expected {len(placeholders)} inputs, got {args_len}.")
+            for input, value in zip(placeholders, args):
+                input.set_data_from_numpy(value)
+        else:
+            for input in placeholders:
+                value = kwargs[input.name]
+                input.set_data_from_numpy(value)
+        return placeholders

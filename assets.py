@@ -2,7 +2,6 @@ import numpy
 
 class Assets():
     def __init__(self):
-        self.colors = list(numpy.random.rand(80,3)*255)
         self.classes = [
             'person',
             'bicycle',
@@ -85,3 +84,4 @@ class Assets():
             'hair drier',
             'toothbrush'
         ]
+        self.colors = list(numpy.random.rand(len(self.classes), 3) * 255)
