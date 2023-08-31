@@ -21,7 +21,7 @@ services:
     volumes:
       - "/tmp/.X11-unix:/tmp/.X11-unix"
       - "/tmp/argus_socket:/tmp/argus_socket"
-      - "${PWD}/weights:/root/app/weights"
+      - "${PWD}/triton:/root/app/triton"
     tty: true
     stdin_open: true
     env_file:
