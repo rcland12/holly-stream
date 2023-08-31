@@ -317,7 +317,7 @@ def main(
 				)
 				frame = cv2.putText(
 					img=frame,
-					text=f'{model.all_classes[indexes[i]]} ({str(confs[i])})',
+					text=f'{model.model.classes[indexes[i]]} ({str(confs[i])})',
 					org=(xmin, ymin),
 					fontFace=cv2.FONT_HERSHEY_PLAIN ,
 					fontScale=0.75,
