@@ -26,21 +26,6 @@ services:
     stdin_open: true
     env_file:
       - ${PWD}/.env
-
-  linux-stream:
-    image: rcland12/detection-stream:bullseye-latest
-    build:
-      context: ./
-      dockerfile: Dockerfile.linux
-    network_mode: "host"
-    devices:
-      - "/dev/video0:/dev/video0"
-    volumes:
-      - "${PWD}/weights:/root/app/weights"
-    tty: true
-    stdin_open: true
-    env_file:
-      - ${PWD}/.env
   
   nginx-stream:
     image: rcland12/detection-stream:nginx-latest
