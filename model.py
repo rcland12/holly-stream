@@ -24,7 +24,7 @@ class ObjectDetection():
         img /= 255
         if len(img.shape) == 3:
             img = img[None,:,:,:]
-
+        print(img.shape)
         preds = self.model(
 			img.cpu().numpy()
 		)
@@ -37,7 +37,7 @@ class ObjectDetection():
             iou_thres=iou_threshold,
             classes=None,
             scale=True,
-            normalize=False
+            normalize=True
         )
 
         bboxes = [item[:4] for item in preds]
