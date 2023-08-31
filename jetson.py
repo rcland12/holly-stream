@@ -296,7 +296,7 @@ def main(
 			camera_height=camera_height,
 			confidence_threshold=confidence_threshold,
 			iou_threshold=iou_threshold,
-			triton_url="http://localhost:8000"
+			triton_url="grpc://localhost:8001"
 		)
 		colors = list(numpy.random.rand(len(model.all_classes), 3) * 255)
 
