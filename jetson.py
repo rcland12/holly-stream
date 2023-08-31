@@ -20,36 +20,61 @@ class TritonRemoteModel:
         if parsed_url.scheme == "grpc":
             from tritonclient.grpc import InferenceServerClient
 
+            self.client = InferenceServerClient(parsed_url.netloc)  # Triton GRPC client
+            self.model_name = model
+            self.metadata = self.client.get_model_metadata(self.model_name)
+            self.config = self.client.get_model_config(self.model_name)
+
+            try:
+                self.model_dims = tuple(self.config["config"]["input"][0]["dims"][2:4])
+            except:
+                self.model_dims = (640, 640)
+
+            try:
+                label_filename = self.config["config"]["output"][0]["label_filename"]
+                docker_file_path = f"/root/app/triton/{model}/{label_filename}"
+                jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{model}/{label_filename}")
+                if os.path.isfile(docker_file_path):
+                    with open(docker_file_path, "r") as file:
+                        self.classes = file.read().splitlines()
+                elif os.path.isfile(jetson_file_path):
+                    with open(jetson_file_path, "r") as file:
+                        self.classes = file.read().splitlines()
+                else:
+                    raise "Class labels file is invalid or is in the wrong location."
+            except:
+                self.classes = None
+
         elif parsed_url.scheme == "http":
             from tritonclient.http import InferenceServerClient
 
+            self.client = InferenceServerClient(parsed_url.netloc)  # Triton GRPC client
+            self.model_name = model
+            self.metadata = self.client.get_model_metadata(self.model_name)
+            self.config = self.client.get_model_config(self.model_name)
+
+            try:
+                self.model_dims = tuple(self.config["input"][0]["dims"][2:4])
+            except:
+                self.model_dims = (640, 640)
+
+            try:
+                label_filename = self.config["output"][0]["label_filename"]
+                docker_file_path = f"/root/app/triton/{model}/{label_filename}"
+                jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{model}/{label_filename}")
+                if os.path.isfile(docker_file_path):
+                    with open(docker_file_path, "r") as file:
+                        self.classes = file.read().splitlines()
+                elif os.path.isfile(jetson_file_path):
+                    with open(jetson_file_path, "r") as file:
+                        self.classes = file.read().splitlines()
+                else:
+                    raise "Class labels file is invalid or is in the wrong location."
+            except:
+                self.classes = None
+
         else:
             raise "Unsupported protocol. Use HTTP or GRPC."
-
-        self.client = InferenceServerClient(parsed_url.netloc)  # Triton GRPC client
-        self.model_name = model
-        self.metadata = self.client.get_model_metadata(self.model_name)
-        self.config = self.client.get_model_config(self.model_name)["config"]
-
-        try:
-            self.model_dims = tuple(self.config["input"][0]["dims"][2:4])
-        except:
-            self.model_dims = (640, 640)
-
-        try:
-            label_filename = self.config["output"][0]["label_filename"]
-            docker_file_path = f"/root/app/triton/{model}/{label_filename}"
-            jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{model}/{label_filename}")
-            if os.path.isfile(docker_file_path):
-                with open(docker_file_path, "r") as file:
-                    self.classes = file.read().splitlines()
-            elif os.path.isfile(jetson_file_path):
-                with open(jetson_file_path, "r") as file:
-                    self.classes = file.read().splitlines()
-            else:
-                raise "Class labels file is invalid or is in the wrong location."
-        except:
-            self.classes = None
 
     @property
     def runtime(self):
