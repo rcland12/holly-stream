@@ -24,7 +24,7 @@ class ObjectDetection():
         self.classes = classes
         self.conf = confidence_threshold
         self.iou = iou_threshold
-        self.frame_dims = (camera_width, camera_height)
+        self.frame_dims = (camera_height, camera_width)
         self.model_dims = self.model.model_dims
 
 
