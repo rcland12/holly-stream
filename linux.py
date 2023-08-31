@@ -6,7 +6,7 @@ from ultralytics import YOLO
 from supervision.draw.color import ColorPalette
 from supervision import BoxAnnotator, Detections
 
-from utilities import EnvArgumentParser
+from assets import EnvArgumentParser
 
 
 # includes classes and labels
@@ -148,3 +148,146 @@ if __name__ == "__main__":
 	    args.STREAM_KEY,
 	    args.CAMERA_INDEX
     )
+
+
+
+
+
+
+
+# import cv2
+# import torch
+# import subprocess
+
+# from ultralytics import YOLO
+# from supervision.draw.color import ColorPalette
+# from supervision import BoxAnnotator, Detections
+
+# from assets import Assets
+# from model import ObjectDetection
+# from utilities import EnvArgumentParser
+
+
+
+# def main(
+# 		object_detection,
+# 		model_name,
+# 		classes,
+# 		confidence_threshold,
+# 		iou_threshold,
+# 		stream_ip,
+# 		stream_port,
+# 		stream_application,
+# 		stream_key,
+# 		camera_index
+# 	):
+
+# 	rtmp_url = "rtmp://{}:{}/{}/{}".format(
+# 		stream_ip,
+# 		stream_port,
+# 		stream_application,
+# 		stream_key
+# 	)
+
+# 	capture = cv2.VideoCapture(camera_index)
+# 	camera_fps = int(capture.get(cv2.CAP_PROP_FPS))
+# 	camera_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+# 	camera_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+# 	command = [
+# 		'ffmpeg',
+# 		'-y',
+# 		'-f', 'rawvideo',
+# 		'-vcodec', 'rawvideo',
+# 		'-pix_fmt', 'bgr24',
+# 		'-s', "{}x{}".format(camera_width, camera_height),
+# 		'-r', str(camera_fps),
+# 		'-i', '-',
+# 		'-c:v', 'libx264',
+# 		'-pix_fmt', 'yuv420p',
+# 		'-preset', 'ultrafast', 
+# 		'-f', 'flv',
+# 		rtmp_url
+# 	]
+
+# 	p = subprocess.Popen(command, stdin=subprocess.PIPE)
+
+# 	if object_detection:
+# 		assets = Assets()
+# 		model = ObjectDetection(
+# 			model_name=model_name,
+# 			all_classes=assets.classes,
+# 			classes=classes,
+# 			camera_width=camera_width,
+# 			camera_height=camera_height,
+# 			confidence_threshold=confidence_threshold,
+# 			iou_threshold=iou_threshold,
+# 			triton_url="http://localhost:8000"
+# 		)
+
+# 		while capture.isOpened():
+# 			ret, frame = capture.read()
+# 			if not ret:
+# 				print("Frame read failed")
+# 				break
+
+# 			bboxes, confs, indexes = model(frame)
+
+# 			for i in range(len(bboxes)):
+# 				xmin, ymin, xmax, ymax = bboxes[i]
+# 				color = assets.colors[indexes[i]]
+# 				frame = cv2.rectangle(
+# 					img=frame,
+# 					pt1=(xmin, ymin),
+# 					pt2=(xmax, ymax),
+# 					color=color,
+# 					thickness=2
+# 				)
+# 				frame = cv2.putText(
+# 					img=frame,
+# 					text=f'{assets.classes[indexes[i]]} ({str(confs[i])})',
+# 					org=(xmin, ymin),
+# 					fontFace=cv2.FONT_HERSHEY_PLAIN ,
+# 					fontScale=0.75,
+# 					color=color,
+# 					thickness=1,
+# 					lineType=cv2.LINE_AA
+# 				)
+
+# 			p.stdin.write(frame.tobytes())
+
+# 	else:
+# 		while capture.isOpened():
+# 			ret, frame = capture.read()
+# 			if not ret:
+# 				print("Frame read failed")
+# 				break
+
+# 			p.stdin.write(frame.tobytes())
+
+# if __name__ == "__main__":
+# 	parser = EnvArgumentParser()
+# 	parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
+# 	parser.add_arg("MODEL", default="weights/yolov8n.pt", type=str)
+# 	parser.add_arg("CLASSES", default=None, type=list)
+# 	parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
+# 	parser.add_arg("IOU_THRESHOLD", default=0.45, type=float)
+# 	parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
+# 	parser.add_arg("STREAM_PORT", default=1935, type=int)
+# 	parser.add_arg("STREAM_APPLICATION", default="live", type=str)
+# 	parser.add_arg("STREAM_KEY", default="stream", type=str)
+# 	parser.add_arg("CAMERA_INDEX", default=0, type=int)
+# 	args = parser.parse_args()
+
+# 	main(
+# 	    args.OBJECT_DETECTION,
+# 	    args.MODEL,
+#         args.CLASSES,
+# 		args.CONFIDENCE_THRESHOLD,
+# 		args.IOU_THRESHOLD,
+# 	    args.STREAM_IP,
+# 	    args.STREAM_PORT,
+# 	    args.STREAM_APPLICATION,
+# 	    args.STREAM_KEY,
+# 	    args.CAMERA_INDEX
+#     )

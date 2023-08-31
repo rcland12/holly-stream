@@ -16,7 +16,7 @@ RUN apt-get update && \
     pip3 install --break-system-packages \
     ultralytics supervision opencv-python
 
-COPY linux.py model.py utilities.py ./
+COPY assets.py linux.py ./
 COPY models/ ./models/
 
 CMD ["python3", "linux.py"]
