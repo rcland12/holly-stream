@@ -23,10 +23,7 @@ class TritonRemoteModel:
             self.client = InferenceServerClient(parsed_url.netloc)
             self.model_name = model
             self.metadata = self.client.get_model_metadata(self.model_name, as_json=True)
-            self.config = self.client.get_model_config(self.model_name, as_json=True)
-            print(self.config)
-            print(type(self.config))
-            print(self.config["config"])
+            self.config = self.client.get_model_config(self.model_name, as_json=True)["config"]
         
         elif parsed_url.scheme == "http":
             from tritonclient.http import InferenceServerClient
@@ -40,14 +37,8 @@ class TritonRemoteModel:
             raise "Unsupported protocol. Use HTTP or GRPC."
 
         try:
-            if parsed_url.scheme == "grpc":
-                self.model_dims = tuple(self.config["config"]["input"]["dims"][2:4])
-                label_filename = self.config["config"]["output"]["label_filename"]
-
-            elif parsed_url.scheme == "http":
-                self.model_dims = tuple(self.config["input"][0]["dims"][2:4])
-                label_filename = self.config["output"][0]["label_filename"]
-
+            self.model_dims = tuple(self.config["input"][0]["dims"][2:4])
+            label_filename = self.config["output"][0]["label_filename"]
             docker_file_path = f"/root/app/triton/{model}/{label_filename}"
             jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{model}/{label_filename}")
             if os.path.isfile(docker_file_path):
