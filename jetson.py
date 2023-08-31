@@ -38,7 +38,6 @@ class TritonRemoteModel:
 
         try:
             label_filename = self.config["output"][0]["label_filename"]
-            print(label_filename)
             docker_file_path = f"/tritonserver/models/{model}/{label_filename}"
             jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{model}/{label_filename}")
             if os.path.isfile(docker_file_path):
@@ -207,17 +206,15 @@ class ObjectDetection():
         ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = TritonRemoteModel(url=triton_url, model=model_name)
-        self.all_classes = self.model.classes
         self.classes = classes
         self.conf = confidence_threshold
         self.iou = iou_threshold
         self.frame_dims = (camera_width, camera_height)
-        self.model_dims = self.model.model_dims
 
     def __call__(self, frame):
         processed_frame = preprocess_frame(
             frame=frame,
-            model_dims=self.model_dims,
+            model_dims=self.model.model_dims,
             device=self.device
         )
 
@@ -228,7 +225,7 @@ class ObjectDetection():
         predictions = postprocess(
             predictions=predictions,
             img0_shape=self.frame_dims,
-            img1_shape=self.model_dims,
+            img1_shape=self.model.model_dims,
             conf_thres=self.conf,
             iou_thres=self.iou,
             classes=self.classes,
@@ -302,6 +299,7 @@ def main(
 			iou_threshold=iou_threshold,
 			triton_url="http://localhost:8000"
 		)
+		print(model.model.classes)
 
 		while camera.isReady():
 			frame = camera.read()
