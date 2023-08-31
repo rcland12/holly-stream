@@ -22,7 +22,7 @@ class TritonRemoteModel:
 
         elif parsed_url.scheme == "http":
             from tritonclient.http import InferenceServerClient
-        
+
         else:
             raise "Unsupported protocol. Use HTTP or GRPC."
 
@@ -49,7 +49,7 @@ class TritonRemoteModel:
                 raise "Class labels file is invalid or is in the wrong location."
         except:
             self.classes = None
-    
+
     @property
     def runtime(self):
         return self.metadata.get("backend", self.metadata.get("platform"))
@@ -69,7 +69,7 @@ class TritonRemoteModel:
             raise RuntimeError("No inputs provided.")
         if args_len and kwargs_len:
             raise RuntimeError("Cannot specify args and kwargs at the same time")
-        
+
         placeholders = [
             InferInput(i['name'], [int(s) for s in args[index].shape], i['datatype']) for index, i in enumerate(self.metadata['inputs'])
         ]
@@ -201,7 +201,7 @@ class ObjectDetection():
             camera_height=480,
             confidence_threshold=0.3,
             iou_threshold=0.25,
-            triton_url="grpc://localhost:8001"
+            triton_url="http://localhost:8000"
         ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = TritonRemoteModel(url=triton_url, model=model_name)
@@ -280,7 +280,7 @@ def main(
 		'-i', '-',
 		'-c:v', 'libx264',
 		'-pix_fmt', 'yuv420p',
-		'-preset', 'ultrafast', 
+		'-preset', 'ultrafast',
 		'-f', 'flv',
 		rtmp_url
 	]
@@ -295,7 +295,7 @@ def main(
 			camera_height=camera_height,
 			confidence_threshold=confidence_threshold,
 			iou_threshold=iou_threshold,
-			triton_url="grpc://localhost:8001"
+			triton_url="http://localhost:8000"
 		)
 		print(model.model.classes)
 		colors = list(numpy.random.rand(len(model.model.classes), 3) * 255)
