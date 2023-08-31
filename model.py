@@ -27,8 +27,8 @@ class ObjectDetection():
         #     img = img[None,:,:,:]
 
         height, width = frame.shape[:2]
-        new_height = int((((640 / width) * height) // 32) * 32)
-        img = cv2.resize(frame, (640, new_height))
+        # new_height = int((((640 / width) * height) // 32) * 32)
+        img = cv2.resize(frame, (640, 640))
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = numpy.moveaxis(img, -1, 0)
         img = torch.from_numpy(img).to(self.device)
