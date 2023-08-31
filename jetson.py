@@ -22,8 +22,10 @@ class TritonRemoteModel:
 
             self.client = InferenceServerClient(parsed_url.netloc)
             self.model_name = model
-            self.metadata = self.client.get_model_metadata(self.model_name, as_json=True)
+            self.metadata = self.client.get_model_metadata(self.model_name)
+            print("failing here1")
             print(self.metadata)
+            print("failing here2")
             self.config = self.client.get_model_config(self.model_name, as_json=True)["config"]
         
         elif parsed_url.scheme == "http":
