@@ -29,8 +29,8 @@ class TritonRemoteModel:
         self.client = InferenceServerClient(parsed_url.netloc)  # Triton GRPC client
         self.model_name = model
         self.metadata = self.client.get_model_metadata(self.model_name)
-        self.config = self.client.get_model_config(self.model_name)
-        print(self.config)
+        self.config = self.client.get_model_config(self.model_name)["config"]
+
         try:
             self.model_dims = tuple(self.config["input"][0]["dims"][2:4])
         except:
