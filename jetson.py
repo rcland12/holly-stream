@@ -32,7 +32,7 @@ class TritonRemoteModel:
         self.metadata = self.client.get_model_metadata(self.model_name)
         self.config = self.client.get_model_config(self.model_name)
         try:
-            self.model_dims = self.config["input"][0]["dims"][2:4]
+            self.model_dims = tuple(self.config["input"][0]["dims"][2:4])
         except:
             self.model_dims = (640, 640)
 
@@ -210,12 +210,11 @@ class ObjectDetection():
         self.conf = confidence_threshold
         self.iou = iou_threshold
         self.frame_dims = (camera_width, camera_height)
-        self.model_dims = self.model.model_dims
 
     def __call__(self, frame):
         processed_frame = preprocess_frame(
             frame=frame,
-            model_dims=self.model_dims,
+            model_dims=self.model.model_dims,
             device=self.device
         )
 
@@ -226,7 +225,7 @@ class ObjectDetection():
         predictions = postprocess(
             predictions=predictions,
             img0_shape=self.frame_dims,
-            img1_shape=self.model_dims,
+            img1_shape=self.model.model_dims,
             conf_thres=self.conf,
             iou_thres=self.iou,
             classes=self.classes,
