@@ -61,6 +61,7 @@ def main(
 			frame = camera.read()
 
 			bboxes, confs, names = model(frame)
+			print(bboxes)
 
 			for i in range(len(bboxes)):
 				xmin, ymin, xmax, ymax = bboxes[i]
