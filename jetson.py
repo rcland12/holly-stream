@@ -205,7 +205,6 @@ class ObjectDetection():
         ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = TritonRemoteModel(url=triton_url, model=model_name)
-        self.all_classes = self.model.classes
         self.classes = classes
         self.conf = confidence_threshold
         self.iou = iou_threshold
@@ -298,7 +297,8 @@ def main(
 			iou_threshold=iou_threshold,
 			triton_url="grpc://localhost:8001"
 		)
-		colors = list(numpy.random.rand(len(model.all_classes), 3) * 255)
+		print(model.model.classes)
+		colors = list(numpy.random.rand(len(model.model.classes), 3) * 255)
 
 		while camera.isReady():
 			frame = camera.read()
