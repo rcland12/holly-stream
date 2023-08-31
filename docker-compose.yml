@@ -1,6 +1,15 @@
 version: "3"
 
 services:
+  triton:
+    image: rcland12/detection-stream:triton-latest
+    build:
+      context: ./
+      dockerfile: Dockerfile.triton
+    network_mode: "host"
+    volumes:
+      - "${PWD}/triton:/tritonserver/models"
+
   jetson-stream:
     image: rcland12/detection-stream:jetson-latest
     build:
