@@ -24,6 +24,9 @@ class TritonRemoteModel:
             self.model_name = model
             self.metadata = self.client.get_model_metadata(self.model_name, as_json=True)
             self.config = self.client.get_model_config(self.model_name, as_json=True)
+            print(self.config)
+            print(type(self.config))
+            print(self.config["config"])
         
         elif parsed_url.scheme == "http":
             from tritonclient.http import InferenceServerClient
