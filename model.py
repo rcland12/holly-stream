@@ -1,3 +1,4 @@
+import cv2
 import torch
 import numpy
 
@@ -15,29 +16,39 @@ class ObjectDetection():
         self.classes = classes
 
     def __call__(self, frame, classes=None, confidence_threshold=0.3, iou_threshold=0.45):
-        img0 = frame[:, :, ::-1].copy()
-        img = letterbox(img0, auto=False)
-        img = img.transpose((2, 0, 1))[::-1]
-        img = numpy.ascontiguousarray(img)
+        # img0 = frame[:, :, ::-1].copy()
+        # img = letterbox(img0, auto=False)
+        # img = img.transpose((2, 0, 1))[::-1]
+        # img = numpy.ascontiguousarray(img)
+        # img = torch.from_numpy(img).to(self.device)
+        # img = img.float()
+        # img /= 255
+        # if len(img.shape) == 3:
+        #     img = img[None,:,:,:]
+
+        height, width = frame.shape[:2]
+        new_height = int((((640 / width) * height) // 32) * 32)
+        img = cv2.resize(frame, (640, new_height))
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = numpy.moveaxis(img, -1, 0)
         img = torch.from_numpy(img).to(self.device)
-        img = img.float()
-        img /= 255
-        if len(img.shape) == 3:
-            img = img[None,:,:,:]
-        print(img.shape)
+        img = img.float()/255.0
+        if img.ndimension() == 3:
+            img = img.unsqueeze(0)
+
         preds = self.model(
-			img.cpu().numpy()
+			img
 		)
         preds = preds[None,:,:]
         preds = non_max_suppression(
             preds,
-            img0.shape,
-            img.shape,
+            (width, height),
+            (640, 640),
             conf_thres=confidence_threshold,
             iou_thres=iou_threshold,
             classes=None,
             scale=True,
-            normalize=True
+            normalize=False
         )
 
         bboxes = [item[:4] for item in preds]
