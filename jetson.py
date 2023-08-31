@@ -38,7 +38,9 @@ class TritonRemoteModel:
             raise "Unsupported protocol. Use HTTP or GRPC."
 
         try:
-            self.model_dims = tuple(self.config["input"][0]["dims"][2:4])
+            model_dims = tuple(self.config["input"][0]["dims"][2:4])
+            self.model_dims = tuple(map(int, model_dims))
+
             label_filename = self.config["output"][0]["label_filename"]
             docker_file_path = f"/root/app/triton/{model}/{label_filename}"
             jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{model}/{label_filename}")
@@ -217,7 +219,7 @@ class ObjectDetection():
 
     def __call__(self, frame):
         print(self.model.model_dims)
-        print(type(self.model.model_dims))
+        print(type(self.model.model_dims[0]))
         processed_frame = preprocess_frame(
             frame=frame,
             model_dims=self.model.model_dims,
