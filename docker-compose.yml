@@ -26,6 +26,8 @@ services:
     stdin_open: true
     env_file:
       - ${PWD}/.env
+    depends_on:
+      - triton
 
   linux-stream:
     image: rcland12/detection-stream:bullseye-latest
@@ -41,6 +43,8 @@ services:
     stdin_open: true
     env_file:
       - ${PWD}/.env
+    depends_on:
+      - triton
   
   nginx-stream:
     image: rcland12/detection-stream:nginx-latest
