@@ -31,7 +31,6 @@ class TritonRemoteModel:
             self.client = InferenceServerClient(parsed_url.netloc)
             self.model_name = model
             self.metadata = self.client.get_model_metadata(self.model_name)
-            print(self.metadata)
             self.config = self.client.get_model_config(self.model_name)
 
         else:
@@ -218,8 +217,6 @@ class ObjectDetection():
         self.frame_dims = (camera_width, camera_height)
 
     def __call__(self, frame):
-        print(self.model.model_dims)
-        print(type(self.model.model_dims[0]))
         processed_frame = preprocess_frame(
             frame=frame,
             model_dims=self.model.model_dims,
@@ -306,7 +303,6 @@ def main(
 			iou_threshold=iou_threshold,
 			triton_url="http://localhost:8000"
 		)
-		print(model.model.classes)
 		colors = list(numpy.random.rand(len(model.model.classes), 3) * 255)
 
 		while camera.isReady():
