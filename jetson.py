@@ -1,3 +1,4 @@
+import os
 import cv2
 import torch
 import numpy
@@ -7,13 +8,11 @@ import subprocess
 from nanocamera import Camera
 from torchvision.ops import nms
 from urllib.parse import urlparse
+from utilities import EnvArgumentParser
 from tritonclient.grpc import InferInput
 from tritonclient.http import InferInput
-from assets import Assets, EnvArgumentParser
 
 
-import os
-os.path.abspath(os.getcwd())
 
 class TritonRemoteModel:
     def __init__(self, url: str, model: str):
@@ -47,7 +46,7 @@ class TritonRemoteModel:
                 with open(jetson_file_path, "r") as file:
                     self.classes = file.read().splitlines()
             else:
-                    raise "Class labels file is invalid or is in the wrong location."
+                raise "Class labels file is invalid or is in the wrong location."
         except:
             self.classes = None
     
@@ -206,13 +205,13 @@ class ObjectDetection():
         ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = TritonRemoteModel(url=triton_url, model=model_name)
+        self.all_classes = self.model.classes
         self.classes = classes
         self.conf = confidence_threshold
         self.iou = iou_threshold
         self.frame_dims = (camera_width, camera_height)
 
     def __call__(self, frame):
-        print(self.model.classes)
         processed_frame = preprocess_frame(
             frame=frame,
             model_dims=self.model.model_dims,
@@ -222,7 +221,7 @@ class ObjectDetection():
         predictions = self.model(
 			processed_frame.cpu().numpy()
 		)
-        print(predictions)
+
         predictions = postprocess(
             predictions=predictions,
             img0_shape=self.frame_dims,
@@ -290,7 +289,6 @@ def main(
 	p = subprocess.Popen(command, stdin=subprocess.PIPE)
 
 	if object_detection:
-		assets = Assets()
 		model = ObjectDetection(
 			model_name=model_name,
 			classes=classes,
@@ -300,6 +298,7 @@ def main(
 			iou_threshold=iou_threshold,
 			triton_url="http://localhost:8000"
 		)
+		colors = list(numpy.random.rand(len(model.all_classes), 3) * 255)
 
 		while camera.isReady():
 			frame = camera.read()
@@ -308,7 +307,7 @@ def main(
 
 			for i in range(len(bboxes)):
 				xmin, ymin, xmax, ymax = bboxes[i]
-				color = assets.colors[indexes[i]]
+				color = colors[indexes[i]]
 				frame = cv2.rectangle(
 					img=frame,
 					pt1=(xmin, ymin),
@@ -318,7 +317,7 @@ def main(
 				)
 				frame = cv2.putText(
 					img=frame,
-					text=f'{assets.classes[indexes[i]]} ({str(confs[i])})',
+					text=f'{model.all_classes[indexes[i]]} ({str(confs[i])})',
 					org=(xmin, ymin),
 					fontFace=cv2.FONT_HERSHEY_PLAIN ,
 					fontScale=0.75,
