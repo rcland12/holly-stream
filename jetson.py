@@ -38,6 +38,7 @@ class TritonRemoteModel:
 
         try:
             label_filename = self.config["config"]["output"][0]["label_filename"]
+            print(label_filename)
             docker_file_path = f"/tritonserver/models/{model}/{label_filename}"
             jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{model}/{label_filename}")
             if os.path.isfile(docker_file_path):
