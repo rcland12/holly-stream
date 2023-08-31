@@ -30,7 +30,9 @@ class TritonRemoteModel:
         self.model_name = model
         self.metadata = self.client.get_model_metadata(self.model_name)
         self.config = self.client.get_model_config(self.model_name)
-
+        print(self.config)
+        print(type(self.config))
+        print(self.config["config"])
         try:
             if parsed_url.scheme == "grpc":
                 self.model_dims = tuple(self.config["config"]["input"]["dims"][2:4])
