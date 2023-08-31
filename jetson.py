@@ -212,6 +212,7 @@ class ObjectDetection():
         self.frame_dims = (camera_width, camera_height)
 
     def __call__(self, frame):
+        print(self.model.classes)
         processed_frame = preprocess_frame(
             frame=frame,
             model_dims=self.model.model_dims,
@@ -299,7 +300,6 @@ def main(
 			iou_threshold=iou_threshold,
 			triton_url="http://localhost:8000"
 		)
-		print(model.model.classes)
 
 		while camera.isReady():
 			frame = camera.read()
