@@ -41,8 +41,8 @@ class ObjectDetection():
 			img.cpu().numpy()
 		)
 
-        preds = non_max_suppression(
-            prediction=predictions,
+        predictions = non_max_suppression(
+            predictions=predictions,
             img0_shape=self.frame_dims,
             img1_shape=self.model_dims,
             conf_thres=self.conf,
@@ -51,8 +51,8 @@ class ObjectDetection():
             scale=True
         )
 
-        bboxes = [item[:4] for item in preds]
-        confs = [round(float(item[4]), 2) for item in preds]
-        indexes = [int(item[5]) for item in preds]
+        bboxes = [item[:4] for item in predictions]
+        confs = [round(float(item[4]), 2) for item in predictions]
+        indexes = [int(item[5]) for item in predictions]
 
         return bboxes, confs, indexes
