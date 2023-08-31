@@ -37,7 +37,7 @@ class ObjectDetection():
             img = img.unsqueeze(0)
 
         preds = self.model(
-			img
+			img.cpu().numpy()
 		)
         preds = preds[None,:,:]
         preds = non_max_suppression(
