@@ -198,6 +198,15 @@ def postprocess(
     return output[0]
 
 
+def normalize_box(boxes, frame_dims, model_dims):
+    return [
+        boxes[0] * frame_dims[0] / model_dims[0],
+        boxes[1] * frame_dims[1] / model_dims[1],
+        boxes[2] * frame_dims[0] / model_dims[0],
+        boxes[3] * frame_dims[1] / model_dims[1]
+    ]
+
+
 class ObjectDetection():
     def __init__(
             self,
@@ -237,7 +246,7 @@ class ObjectDetection():
             scale=True
         )
 
-        bboxes = [item[:4] for item in predictions]
+        bboxes = [normalize_box(item[:4]) for item in predictions]
         confs = [round(float(item[4]), 2) for item in predictions]
         indexes = [int(item[5]) for item in predictions]
 
