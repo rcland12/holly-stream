@@ -19,20 +19,23 @@ class TritonRemoteModel:
         parsed_url = urlparse(url)
         if parsed_url.scheme == "grpc":
             from tritonclient.grpc import InferenceServerClient
+
+            self.client = InferenceServerClient(parsed_url.netloc)
+            self.model_name = model
+            self.metadata = self.client.get_model_metadata(self.model_name, as_json=True)
+            self.config = self.client.get_model_config(self.model_name, as_json=True)
         
         elif parsed_url.scheme == "http":
             from tritonclient.http import InferenceServerClient
 
+            self.client = InferenceServerClient(parsed_url.netloc)
+            self.model_name = model
+            self.metadata = self.client.get_model_metadata(self.model_name)
+            self.config = self.client.get_model_config(self.model_name)
+
         else:
             raise "Unsupported protocol. Use HTTP or GRPC."
 
-        self.client = InferenceServerClient(parsed_url.netloc)
-        self.model_name = model
-        self.metadata = self.client.get_model_metadata(self.model_name)
-        self.config = self.client.get_model_config(self.model_name)
-        print(self.config)
-        print(type(self.config))
-        print(self.config["config"])
         try:
             if parsed_url.scheme == "grpc":
                 self.model_dims = tuple(self.config["config"]["input"]["dims"][2:4])
