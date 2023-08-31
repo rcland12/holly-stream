@@ -7,9 +7,10 @@ from model import ObjectDetection
 from utilities import EnvArgumentParser
 
 
+
 def main(
 		object_detection,
-		model_path,
+		model_name,
 		classes,
 		confidence_threshold,
 		iou_threshold,
@@ -22,10 +23,6 @@ def main(
 		camera_height,
 		camera_fps
 	):
-	
-	if object_detection:
-		assets = Assets()
-		model = ObjectDetection(model_path)
 
 	rtmp_url = "rtmp://{}:{}/{}/{}".format(
 		stream_ip,
@@ -60,22 +57,27 @@ def main(
 
 	p = subprocess.Popen(command, stdin=subprocess.PIPE)
 
-	while camera.isReady():
-		frame = camera.read()
+	if object_detection:
+		assets = Assets()
+		model = ObjectDetection(
+			model_name=model_name,
+			all_classes=assets.classes,
+			classes=classes,
+			camera_width=camera_width,
+			camera_height=camera_height,
+			confidence_threshold=confidence_threshold,
+			iou_threshold=iou_threshold,
+			triton_url="http://localhost:8000"
+		)
 
-		if object_detection:
-			results = model(
-				frame=frame,
-				classes=classes,
-				confidence_threshold=confidence_threshold,
-				iou_threshold=iou_threshold
-			)
+		while camera.isReady():
+			frame = camera.read()
 
-			for result in results:
-				score = result['score']
-				label = result['label']
-				xmin, ymin, xmax, ymax = result['bbox']
-				color = assets.colors[assets.classes.index(label)]
+			bboxes, confs, indexes = model(frame)
+
+			for i in range(len(bboxes)):
+				xmin, ymin, xmax, ymax = bboxes[i]
+				color = assets.colors[indexes[i]]
 				frame = cv2.rectangle(
 					img=frame,
 					pt1=(xmin, ymin),
@@ -83,18 +85,23 @@ def main(
 					color=color,
 					thickness=2
 				)
-				# frame = cv2.putText(
-				# 	img=frame,
-				# 	text=f'{label} ({str(score)})',
-				# 	org=(xmin, ymin),
-				# 	fontFace=cv2.FONT_HERSHEY_PLAIN ,
-				# 	fontScale=0.75,
-				# 	color=color,
-				# 	thickness=1,
-				# 	lineType=cv2.LINE_AA
-				# )
+				frame = cv2.putText(
+					img=frame,
+					text=f'{assets.classes[indexes[i]]} ({str(confs[i])})',
+					org=(xmin, ymin),
+					fontFace=cv2.FONT_HERSHEY_PLAIN ,
+					fontScale=0.75,
+					color=color,
+					thickness=1,
+					lineType=cv2.LINE_AA
+				)
 
-		p.stdin.write(frame.tobytes())
+			p.stdin.write(frame.tobytes())
+
+	else:
+		while camera.isReady():
+			frame = camera.read()
+			p.stdin.write(frame.tobytes())
 
 	camera.release()
 	del camera
@@ -103,7 +110,7 @@ def main(
 if __name__ == "__main__":
 	parser = EnvArgumentParser()
 	parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
-	parser.add_arg("MODEL", default="weights/yolov5n.pt", type=str)
+	parser.add_arg("MODEL", default="yolov5n", type=str)
 	parser.add_arg("CLASSES", default=None, type=list)
 	parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
 	parser.add_arg("IOU_THRESHOLD", default=0.45, type=float)
