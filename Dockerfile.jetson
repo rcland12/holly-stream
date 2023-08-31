@@ -58,7 +58,7 @@ RUN make install && \
     ldconfig && \
     make clean && \
     apt-get update && \
-    cd ../.. && rmdir opencv opencv_contrib
+    cd ../.. && rm -rf opencv opencv_contrib
 
 
 # PyTorch (1.8.0) and Torchvision (0.9.0) installation via pip wheel
