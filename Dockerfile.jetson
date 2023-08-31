@@ -78,7 +78,7 @@ RUN git clone --branch ${TORCHVISION_BRANCH} https://github.com/pytorch/vision t
     cd torchvision && \
     export BUILD_VERSION=${TORCHVISION_VERSION} && \
     python3 setup.py install --user && \
-    cd .. && rmdir torchvision
+    cd .. && rm -rf torchvision
 
 
 # Nvidia Triton Inference Server Client installation
