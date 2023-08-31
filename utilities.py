@@ -1,14 +1,11 @@
 import os
 import cv2
+import torch
 import typing
 import numpy as np
 
-import torch
-
 from ast import literal_eval
 from torchvision.ops import nms
-from models.common import Ensemble
-
 from urllib.parse import urlparse
 from tritonclient.grpc import InferInput
 from tritonclient.http import InferInput
@@ -134,31 +131,15 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleF
     return im
 
 
-# def attempt_load(weights, device=None, inplace=True, fuse=True):
-#     model = Ensemble()
-#     for w in weights if isinstance(weights, list) else [weights]:
-#         ckpt = torch.load(w, map_location="cpu")
-#         ckpt = (ckpt.get("ema") or ckpt["model"]).to(device).float()
-#         model.append(ckpt.fuse().eval() if fuse else ckpt.eval())
-    
-#     if len(model) == 1:
-#         return model[-1]
-    
-#     for k in "names", "nc", "yaml":
-#         setattr(model, k, getattr(model[0], k))
-    
-#     model.stride = model[torch.argmax(torch.tensor([m.stride.max() for m in model])).int()].stride
-#     assert all(model[0].nc == m.nc for m in model), f"Models have different class counts: {[m.nc for m in model]}"
-#     return model
-
-
 def box_area(box):
     return (box[2] - box[0]) * (box[3] - box[1])
+
 
 def box_iou(box1, box2, eps=1e-7):
     (a1, a2), (b1, b2) = box1[:, None].chunk(2, 2), box2.chunk(2, 1)
     inter = (torch.min(a2, b2) - torch.max(a1, b1)).clamp(0).prod(2)
     return inter / (box_area(box1.T)[:, None] + box_area(box2.T) - inter + eps)
+
 
 def xywh2xyxy(x):
     y = x.clone()
@@ -167,6 +148,7 @@ def xywh2xyxy(x):
     y[..., 2] = x[..., 0] + x[..., 2] / 2
     y[..., 3] = x[..., 1] + x[..., 3] / 2
     return y
+
 
 def non_max_suppression(
         prediction,

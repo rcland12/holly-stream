@@ -1,5 +1,4 @@
 import cv2
-import numpy
 import subprocess
 
 from assets import Assets
@@ -61,14 +60,11 @@ def main(
 		while camera.isReady():
 			frame = camera.read()
 
-			results = model(frame)
-			print(results)
+			bboxes, confs, names = model(frame)
 
-			for result in results:
-				score = result['score']
-				label = result['label']
-				xmin, ymin, xmax, ymax = result['bbox']
-				color = assets.colors[assets.classes.index(label)]
+			for i in range(len(bboxes)):
+				xmin, ymin, xmax, ymax = bboxes[i]
+				color = assets.colors[assets.classes.index(names[i])]
 				frame = cv2.rectangle(
 					img=frame,
 					pt1=(xmin, ymin),
@@ -78,7 +74,7 @@ def main(
 				)
 				frame = cv2.putText(
 					img=frame,
-					text=f'{label} ({str(score)})',
+					text=f'{names[i]} ({str(confs[i])})',
 					org=(xmin, ymin),
 					fontFace=cv2.FONT_HERSHEY_PLAIN ,
 					fontScale=0.75,
