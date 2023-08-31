@@ -20,6 +20,8 @@ cd ${BUILD_DIR}
 # The default OpenCV version on the Jetson Nano (Jetpack 4.6.1) is 4.1.1
 # The default version 4.1.1 causes dependency issues
 
+pip3 install --upgrade pip
+pip3 install docker-compose==1.27.4
 
 bash -c "echo '/usr/local/cuda/lib64' >> /etc/ld.so.conf.d/nvidia-tegra.conf"
 ldconfig
@@ -118,6 +120,5 @@ tar -xzf tritonserver2.16.0-jetpack4.6.tgz -C ${BUILD_DIR}/tritonserver/
 export BACKEND_PATH=${BUILD_DIR}/tritonserver/backends
 
 pip3 install --upgrade pip
-pip3 install --upgrade grpcio-tools numpy==1.19.4 future attrdict
+pip3 install --upgrade grpcio-tools numpy==1.19.4 future attrdict nanocamera docker-compose==1.27.4
 pip3 install --upgrade ${BUILDDIR}/tritonserver/clients/python/tritonclient-2.16.0-py3-none-any.whl[all]
-pip3 install nanocamera
