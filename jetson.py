@@ -77,7 +77,7 @@ def main(
 
 			for i in range(len(bboxes)):
 				xmin, ymin, xmax, ymax = bboxes[i]
-				color = assets.colors[indexes]
+				color = assets.colors[indexes[i]]
 				frame = cv2.rectangle(
 					img=frame,
 					pt1=(xmin, ymin),
@@ -87,7 +87,7 @@ def main(
 				)
 				frame = cv2.putText(
 					img=frame,
-					text=f'{assets.classes[indexes]} ({str(confs[i])})',
+					text=f'{assets.classes[indexes[i]]} ({str(confs[i])})',
 					org=(xmin, ymin),
 					fontFace=cv2.FONT_HERSHEY_PLAIN ,
 					fontScale=0.75,
