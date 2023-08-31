@@ -20,9 +20,6 @@ cd ${BUILD_DIR}
 # The default OpenCV version on the Jetson Nano (Jetpack 4.6.1) is 4.1.1
 # The default version 4.1.1 causes dependency issues
 
-pip3 install --upgrade pip
-pip3 install docker-compose==1.27.4
-
 bash -c "echo '/usr/local/cuda/lib64' >> /etc/ld.so.conf.d/nvidia-tegra.conf"
 ldconfig
 apt-get update
