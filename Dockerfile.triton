@@ -28,7 +28,5 @@ RUN wget https://github.com/triton-inference-server/server/releases/download/v2.
     rm tritonserver2.16.0-jetpack4.6.tgz
 
 ENV LD_LIBRARY_PATH=/tritonserver/backends/tensorflow1:$LD_LIBRARY_PATH
-ENV BACKEND_PATH = /tritonserver/backends
-ENV MODEL_REPOSITORY=/tritonserver/models
 
-CMD ["/tritonserver/bin/tritonserver", "--backend-directory", "${BACKEND_PATH}", "--model-repository", "${MODEL_REPOSITORY}"]
+CMD ["/tritonserver/bin/tritonserver", "--backend-directory", "/tritonserver/backends", "--model-repository", "/tritonserver/models"]
