@@ -1,32 +1,6 @@
 version: "3"
 
 services:
-  triton:
-    image: rcland12/detection-stream:triton-latest
-    build:
-      context: ./
-      dockerfile: Dockerfile.triton
-    network_mode: "host"
-    volumes:
-      - "${PWD}/triton:/tritonserver/models"
-
-  jetson-stream:
-    image: rcland12/detection-stream:jetson-latest
-    build:
-      context: ./
-      dockerfile: Dockerfile.jetson
-    network_mode: "host"
-    devices:
-      - "/dev/video0:/dev/video0"
-    volumes:
-      - "/tmp/.X11-unix:/tmp/.X11-unix"
-      - "/tmp/argus_socket:/tmp/argus_socket"
-      - "${PWD}/weights:/root/app/weights"
-    tty: true
-    stdin_open: true
-    env_file:
-      - ${PWD}/.env
-
   linux-stream:
     image: rcland12/detection-stream:bullseye-latest
     build:

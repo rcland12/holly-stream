@@ -11,6 +11,7 @@ from assets import EnvArgumentParser
 
 # includes classes and labels
 def load_model(model):
+	device = "cuda" if torch.cuda.is_available() else "cpu"
 	model = YOLO(model)
 	model.fuse()
 	classes = model.model.names
