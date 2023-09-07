@@ -6,7 +6,8 @@ services:
     build:
       context: ./
       dockerfile: Dockerfile.triton
-    network_mode: "host"
+    networks:
+      - internal
     volumes:
       - "${PWD}/triton:/root/app/triton"
 
@@ -15,7 +16,8 @@ services:
     build:
       context: ./
       dockerfile: Dockerfile.jetson
-    network_mode: "host"
+    networks:
+      - internal
     devices:
       - "/dev/video0:/dev/video0"
     volumes:
@@ -26,6 +28,8 @@ services:
     stdin_open: true
     env_file:
       - ${PWD}/.env
+    ports:
+      - 1935:1935
     depends_on:
       - triton
   
@@ -47,3 +51,8 @@ services:
     volumes:
       - "${PWD}/nginx/nginx-web/nginx.conf:/etc/nginx/nginx.conf"
       - "${PWD}/nginx/stream:/var/www/html/stream"
+
+networks:
+  internal:
+    driver: bridge
+    name: internal
