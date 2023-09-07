@@ -41,17 +41,20 @@ class TritonRemoteModel:
 			self.model_dims = tuple(map(int, model_dims))
 
 			label_filename = self.config["output"][0]["label_filename"]
+			print(label_filename)
 			docker_file_path = f"/root/app/triton/{model}/{label_filename}"
 			jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{model}/{label_filename}")
 			if os.path.isfile(docker_file_path):
+				print("docker")
 				with open(docker_file_path, "r") as file:
 					self.classes = file.read().splitlines()
 			elif os.path.isfile(jetson_file_path):
+				print("local")
 				with open(jetson_file_path, "r") as file:
 					self.classes = file.read().splitlines()
 			else:
 				raise "Class labels file is invalid or is in the wrong location."
-
+			print(self.classes)
 		except:
 			self.model_dims = (640, 640)
 			self.classes = None
