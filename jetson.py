@@ -202,12 +202,12 @@ class ObjectDetection():
 	def __init__(
 			self,
 			model_name,
+			camera_width,
+			camera_height,
+			confidence_threshold,
+			iou_threshold,
+			triton_url,
 			classes=None,
-			camera_width=640,
-			camera_height=480,
-			confidence_threshold=0.3,
-			iou_threshold=0.25,
-			triton_url="http://localhost:8000"
 		):
 		self.device = "cuda" if torch.cuda.is_available() else "cpu"
 		self.model = TritonRemoteModel(url=triton_url, model=model_name)
@@ -246,6 +246,7 @@ class ObjectDetection():
 
 def main(
 		object_detection,
+		triton_url,
 		model_name,
 		classes,
 		confidence_threshold,
@@ -296,14 +297,14 @@ def main(
 	if object_detection:
 		model = ObjectDetection(
 			model_name=model_name,
-			classes=classes,
 			camera_width=camera_width,
 			camera_height=camera_height,
 			confidence_threshold=confidence_threshold,
 			iou_threshold=iou_threshold,
-			triton_url="http://localhost:8000"
+			triton_url=triton_url,
+			classes=classes,
 		)
-		print(model.model.classes)
+
 		colors = list(numpy.random.rand(len(model.model.classes), 3) * 255)
 
 		while camera.isReady():
@@ -346,6 +347,7 @@ def main(
 if __name__ == "__main__":
 	parser = EnvArgumentParser()
 	parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
+	parser.add_arg("TRITON_URL", default="http://localhost:8000/", type=str)
 	parser.add_arg("MODEL", default="yolov5n", type=str)
 	parser.add_arg("CLASSES", default=None, type=list)
 	parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
@@ -362,6 +364,7 @@ if __name__ == "__main__":
 
 	main(
 		args.OBJECT_DETECTION,
+		args.TRITON_URL,
 		args.MODEL,
 		args.CLASSES,
 		args.CONFIDENCE_THRESHOLD,
