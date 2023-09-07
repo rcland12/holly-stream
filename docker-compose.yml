@@ -8,7 +8,7 @@ services:
       dockerfile: Dockerfile.triton
     network_mode: "host"
     volumes:
-      - "${PWD}/triton:/tritonserver/models"
+      - "${PWD}/triton:/root/app/triton"
 
   jetson-stream:
     image: rcland12/detection-stream:jetson-latest
@@ -21,7 +21,6 @@ services:
     volumes:
       - "/tmp/.X11-unix:/tmp/.X11-unix"
       - "/tmp/argus_socket:/tmp/argus_socket"
-      - "${PWD}/triton:/root/app/triton"
     tty: true
     stdin_open: true
     env_file:
