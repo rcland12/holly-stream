@@ -6,6 +6,7 @@ import typing
 import subprocess
 
 from nanocamera import Camera
+from dotenv import load_dotenv
 from torchvision.ops import nms
 from urllib.parse import urlparse
 from utilities import EnvArgumentParser
@@ -344,6 +345,7 @@ def main(
 
 
 if __name__ == "__main__":
+	load_dotenv()
 	parser = EnvArgumentParser()
 	parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
 	parser.add_arg("TRITON_URL", default="http://localhost:8000/", type=str)
@@ -360,7 +362,7 @@ if __name__ == "__main__":
 	parser.add_arg("CAMERA_HEIGHT", default=480, type=int)
 	parser.add_arg("CAMERA_FPS", default=30, type=int)
 	args = parser.parse_args()
-	print(args)
+
 	main(
 		args.OBJECT_DETECTION,
 		args.TRITON_URL,
