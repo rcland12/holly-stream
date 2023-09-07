@@ -224,8 +224,8 @@ class ObjectDetection():
 		)
 
 		predictions = self.model(
-			processed_frame.cpu().numpy()
-		)
+			processed_frame.cpu().numpy().astype(numpy.float16)
+		)[0]
 
 		predictions = postprocess(
 			predictions=predictions,
