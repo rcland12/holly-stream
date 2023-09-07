@@ -226,7 +226,8 @@ class ObjectDetection():
 		predictions = self.model(
 			processed_frame.cpu().numpy().astype(numpy.float16)
 		)
-		print(predictions.shape)
+		print(predictions)
+		print(predictions[0].shape)
 		predictions = postprocess(
 			predictions=predictions,
 			img0_shape=self.frame_dims,
