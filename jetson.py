@@ -360,7 +360,7 @@ if __name__ == "__main__":
 	parser.add_arg("CAMERA_HEIGHT", default=480, type=int)
 	parser.add_arg("CAMERA_FPS", default=30, type=int)
 	args = parser.parse_args()
-
+	print(args)
 	main(
 		args.OBJECT_DETECTION,
 		args.TRITON_URL,
