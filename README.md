@@ -1,3 +1,11 @@
+```bash
+sudo fallocate -l 4G /var/swapfile 
+sudo chmod 600 /var/swapfile
+sudo mkswap /var/swapfile
+sudo swapon /var/swapfile
+sudo bash -c "echo '/var/swapfile swap swap defaults 0 0'  >> /etc/fstab"
+```
+
 # Holly Stream
 This application will ingest your computers webcam feed (using ffmpeg), apply an object detection task on the feed with bounding boxes, and send that feed via RTMP to an address of your choice. You have the following options for recording and applying a custom object detection model:
 
