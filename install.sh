@@ -1,8 +1,11 @@
 #!/bin/bash
 
+# This script contains many sudo commands, requiring you to input your password
+# This script takes roughly two to three hours to complete
+
 # Installation script for holly-stream
 # This script assumes you are using a fresh install of Jetpack 4.6
-# If there are dependency issues, this script will create virtual environments when possible
+# To avoid dependency issues this script will create a virtual environment
 
 sudo pip3 install virtualenv
 virtualenv -p /usr/bin/python3.6 holly --system-site-packages
@@ -37,7 +40,6 @@ liblapack-dev libeigen3-dev gfortran \
 libhdf5-dev protobuf-compiler \
 libprotobuf-dev libgoogle-glog-dev libgflags-dev \
 libopenmpi-dev libomp-dev ffmpeg
-
 
 export OPENCV_VERSION=4.5.1
 
@@ -92,7 +94,9 @@ export BUILD_VERSION=${TORCHVISION_VERSION}
 python3 setup.py install --user
 cd ..
 rm -rf torchvision
+cd ..
 
+# Installing the Triton Inference server and client
 sudo apt-get install -y --no-install-recommends \
 software-properties-common \
 autoconf \
@@ -109,11 +113,11 @@ patchelf
 
 wget https://github.com/triton-inference-server/server/releases/download/v2.16.0/tritonserver2.16.0-jetpack4.6.tgz
 mkdir tritonserver
-tar -xzf tritonserver2.16.0-jetpack4.6.tgz -C ${BUILD_DIR}/tritonserver/
+tar -xzf tritonserver2.16.0-jetpack4.6.tgz -C ${PWD}/tritonserver/
 rm tritonserver2.16.0-jetpack4.6.tgz
 
-export BACKEND_PATH=${BUILD_DIR}/tritonserver/backends
+export BACKEND_PATH=${PWD}/tritonserver/backends
 
 pip install --upgrade pip
 pip install --upgrade grpcio-tools numpy==1.19.4 future attrdict nanocamera docker-compose==1.27.4
-pip install --upgrade ${BUILDDIR}/tritonserver/clients/python/tritonclient-2.16.0-py3-none-any.whl[all]
+pip install --upgrade ${PWD}/tritonserver/clients/python/tritonclient-2.16.0-py3-none-any.whl[all]

@@ -1,3 +1,4 @@
+Allocate more swap memory for your Jetson Nano
 ```bash
 sudo fallocate -l 4G /var/swapfile 
 sudo chmod 600 /var/swapfile
