@@ -37,7 +37,7 @@ RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/${OPENCV_VERSION
     rm opencv.zip && rm opencv_contrib.zip && \
     mkdir ./opencv/build
 
-WORKDIR ${BUILDDIR}/opencv/build
+WORKDIR /root/build/opencv/build
 
 RUN cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr \
     -D OPENCV_EXTRA_MODULES_PATH=${BUILDDIR}/opencv_contrib/modules \
