@@ -29,4 +29,4 @@ RUN wget https://github.com/triton-inference-server/server/releases/download/v2.
 
 ENV LD_LIBRARY_PATH=/tritonserver/backends/tensorflow1:$LD_LIBRARY_PATH
 
-CMD ["/tritonserver/bin/tritonserver", "--backend-directory", "/tritonserver/backends", "--model-repository", "/tritonserver/models"]
+CMD ["/tritonserver/bin/tritonserver", "--backend-directory", "/tritonserver/backends", "--model-repository", "/root/app/triton"]
