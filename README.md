@@ -1,3 +1,12 @@
+Allocate more swap memory for your Jetson Nano
+```bash
+sudo fallocate -l 4G /var/swapfile 
+sudo chmod 600 /var/swapfile
+sudo mkswap /var/swapfile
+sudo swapon /var/swapfile
+sudo bash -c "echo '/var/swapfile swap swap defaults 0 0'  >> /etc/fstab"
+```
+
 # Holly Stream
 This application will ingest your Jetson's camera feed, apply an object detection task with bounding boxes, and send that feed via RTMP to an address of your choice. You have the option to send the video stream to another local machine, or an external web server.
 

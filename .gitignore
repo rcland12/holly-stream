@@ -4,6 +4,7 @@
 # custom files
 *.m3u8
 stream-*.ts
+tritonserver/
 
 ### Linux ###
 *~
