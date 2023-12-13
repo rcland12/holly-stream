@@ -92,5 +92,5 @@ RUN pip3 install --upgrade pip && \
     rm tritonserver2.16.0-jetpack4.6.tgz
 
 WORKDIR ${APPDIR}
-COPY jetson.py utilities.py ./
-CMD ["python3", "jetson.py"]
+COPY main.py utilities.py ./
+CMD ["python3", "main.py"]

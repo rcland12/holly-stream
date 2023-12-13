@@ -16,121 +16,121 @@ from tritonclient.http import InferInput
 
 
 class TritonRemoteModel:
-	def __init__(self, url: str, model: str):
-		parsed_url = urlparse(url)
-		if parsed_url.scheme == "grpc":
-			from tritonclient.grpc import InferenceServerClient
+    def __init__(self, url: str, model: str):
+        parsed_url = urlparse(url)
+        if parsed_url.scheme == "grpc":
+            from tritonclient.grpc import InferenceServerClient
 
-			self.client = InferenceServerClient(parsed_url.netloc)
-			self.model_name = model
-			self.metadata = self.client.get_model_metadata(self.model_name, as_json=True)
-			self.config = self.client.get_model_config(self.model_name, as_json=True)["config"]
+            self.client = InferenceServerClient(parsed_url.netloc)
+            self.model_name = model
+            self.metadata = self.client.get_model_metadata(self.model_name, as_json=True)
+            self.config = self.client.get_model_config(self.model_name, as_json=True)["config"]
 
-		elif parsed_url.scheme == "http":
-			from tritonclient.http import InferenceServerClient
+        elif parsed_url.scheme == "http":
+            from tritonclient.http import InferenceServerClient
 
-			self.client = InferenceServerClient(parsed_url.netloc)
-			self.model_name = model
-			self.metadata = self.client.get_model_metadata(self.model_name)
-			self.config = self.client.get_model_config(self.model_name)
+            self.client = InferenceServerClient(parsed_url.netloc)
+            self.model_name = model
+            self.metadata = self.client.get_model_metadata(self.model_name)
+            self.config = self.client.get_model_config(self.model_name)
 
-		else:
-			raise "Unsupported protocol. Use HTTP or GRPC."
+        else:
+            raise "Unsupported protocol. Use HTTP or GRPC."
 
-		try:
-			model_dims = tuple(self.config["input"][0]["dims"][2:4])
-			self.model_dims = tuple(map(int, model_dims))
+        try:
+            model_dims = tuple(self.config["input"][0]["dims"][2:4])
+            self.model_dims = tuple(map(int, model_dims))
 
-			label_filename = self.config["output"][0]["label_filename"]
-			docker_file_path = f"/root/app/triton/{model}/{label_filename}"
-			jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{model}/{label_filename}")
-			if os.path.isfile(docker_file_path):
-				with open(docker_file_path, "r") as file:
-					self.classes = file.read().splitlines()
-			elif os.path.isfile(jetson_file_path):
-				with open(jetson_file_path, "r") as file:
-					self.classes = file.read().splitlines()
-			else:
-				raise "Class labels file is invalid or is in the wrong location."
-		except:
-			self.model_dims = (640, 640)
-			self.classes = None
+            label_filename = self.config["output"][0]["label_filename"]
+            docker_file_path = f"/root/app/triton/{model}/{label_filename}"
+            jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{model}/{label_filename}")
+            if os.path.isfile(docker_file_path):
+                with open(docker_file_path, "r") as file:
+                    self.classes = file.read().splitlines()
+            elif os.path.isfile(jetson_file_path):
+                with open(jetson_file_path, "r") as file:
+                    self.classes = file.read().splitlines()
+            else:
+                raise "Class labels file is invalid or is in the wrong location."
+        except:
+            self.model_dims = (640, 640)
+            self.classes = None
 
-	@property
-	def runtime(self):
-		return self.metadata.get("backend", self.metadata.get("platform"))
+    @property
+    def runtime(self):
+        return self.metadata.get("backend", self.metadata.get("platform"))
 
-	def __call__(self, *args, **kwargs) -> typing.Union[torch.Tensor, typing.Tuple[torch.Tensor, ...]]:
-		inputs = self._create_inputs(*args, **kwargs)
-		response = self.client.infer(model_name=self.model_name, inputs=inputs)
-		result = []
-		for output in self.metadata['outputs']:
-			tensor = torch.as_tensor(response.as_numpy(output['name']))
-			result.append(tensor)
-		return result[0][0] if len(result) == 1 else result
+    def __call__(self, *args, **kwargs) -> typing.Union[torch.Tensor, typing.Tuple[torch.Tensor, ...]]:
+        inputs = self._create_inputs(*args, **kwargs)
+        response = self.client.infer(model_name=self.model_name, inputs=inputs)
+        result = []
+        for output in self.metadata['outputs']:
+            tensor = torch.as_tensor(response.as_numpy(output['name']))
+            result.append(tensor)
+        return result[0][0] if len(result) == 1 else result
 
-	def _create_inputs(self, *args, **kwargs):
-		args_len, kwargs_len = len(args), len(kwargs)
-		if not args_len and not kwargs_len:
-			raise RuntimeError("No inputs provided.")
-		if args_len and kwargs_len:
-			raise RuntimeError("Cannot specify args and kwargs at the same time")
+    def _create_inputs(self, *args, **kwargs):
+        args_len, kwargs_len = len(args), len(kwargs)
+        if not args_len and not kwargs_len:
+            raise RuntimeError("No inputs provided.")
+        if args_len and kwargs_len:
+            raise RuntimeError("Cannot specify args and kwargs at the same time")
 
-		placeholders = [
-			InferInput(i['name'], [int(s) for s in args[index].shape], i['datatype']) for index, i in enumerate(self.metadata['inputs'])
-		]
-		if args_len:
-			if args_len != len(placeholders):
-				raise RuntimeError(f"Expected {len(placeholders)} inputs, got {args_len}.")
-			for input, value in zip(placeholders, args):
-				input.set_data_from_numpy(value)
-		else:
-			for input in placeholders:
-				value = kwargs[input.name]
-				input.set_data_from_numpy(value)
-		return placeholders
+        placeholders = [
+            InferInput(i['name'], [int(s) for s in args[index].shape], i['datatype']) for index, i in enumerate(self.metadata['inputs'])
+        ]
+        if args_len:
+            if args_len != len(placeholders):
+                raise RuntimeError(f"Expected {len(placeholders)} inputs, got {args_len}.")
+            for input, value in zip(placeholders, args):
+                input.set_data_from_numpy(value)
+        else:
+            for input in placeholders:
+                value = kwargs[input.name]
+                input.set_data_from_numpy(value)
+        return placeholders
 
 
 def preprocess_frame(frame, model_dims, device):
-	frame = cv2.resize(frame, model_dims)
-	frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-	frame = numpy.moveaxis(frame, -1, 0)
-	frame = torch.from_numpy(frame).to(device)
-	frame = frame.float()/255.0
-	if frame.ndimension() == 3:
-		frame = frame.unsqueeze(0)
-	return frame
+    frame = cv2.resize(frame, model_dims)
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    frame = numpy.moveaxis(frame, -1, 0)
+    frame = torch.from_numpy(frame).to(device)
+    frame = frame.float()/255.0
+    if frame.ndimension() == 3:
+        frame = frame.unsqueeze(0)
+    return frame
 
 
 def box_area(box):
-	return (box[2] - box[0]) * (box[3] - box[1])
+    return (box[2] - box[0]) * (box[3] - box[1])
 
 
 def box_iou(box1, box2, eps=1e-7):
-	(a1, a2), (b1, b2) = box1[:, None].chunk(2, 2), box2.chunk(2, 1)
-	inter = (torch.min(a2, b2) - torch.max(a1, b1)).clamp(0).prod(2)
-	return inter / (box_area(box1.T)[:, None] + box_area(box2.T) - inter + eps)
+    (a1, a2), (b1, b2) = box1[:, None].chunk(2, 2), box2.chunk(2, 1)
+    inter = (torch.min(a2, b2) - torch.max(a1, b1)).clamp(0).prod(2)
+    return inter / (box_area(box1.T)[:, None] + box_area(box2.T) - inter + eps)
 
 
 def xywh2xyxy(x):
-	y = x.clone()
-	y[..., 0] = x[..., 0] - x[..., 2] / 2
-	y[..., 1] = x[..., 1] - x[..., 3] / 2
-	y[..., 2] = x[..., 0] + x[..., 2] / 2
-	y[..., 3] = x[..., 1] + x[..., 3] / 2
-	return y
+    y = x.clone()
+    y[..., 0] = x[..., 0] - x[..., 2] / 2
+    y[..., 1] = x[..., 1] - x[..., 3] / 2
+    y[..., 2] = x[..., 0] + x[..., 2] / 2
+    y[..., 3] = x[..., 1] + x[..., 3] / 2
+    return y
 
 
 def postprocess(
-	predictions,
-	img0_shape,
-	img1_shape,
-	conf_thres,
-	iou_thres,
-	classes=None,
-	max_det=300,
-	max_nms=30000,
-	scale=False
+    predictions,
+    img0_shape,
+    img1_shape,
+    conf_thres,
+    iou_thres,
+    classes=None,
+    max_det=300,
+    max_nms=30000,
+    scale=False
 ):
 	predictions = predictions[None,:,:]
 	xc = predictions[..., 4] > conf_thres
