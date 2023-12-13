@@ -1,32 +1,11 @@
-FROM nvcr.io/nvidia/l4t-ml:r32.6.1-py3
+FROM nvcr.io/nvidia/tritonserver:23.10-py3
 
-ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update -y && \
+    apt-get install -y \
+    libgl1 && \
+    pip3 install \
+    opencv-python \
+    torch
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        software-properties-common \
-        autoconf \
-        automake \
-        build-essential \
-        cmake \
-        git \
-        libb64-dev \
-        libre2-dev \
-        libssl-dev \
-        libtool \
-        libboost-dev \
-        libcurl4-openssl-dev \
-        rapidjson-dev \
-        patchelf \
-        zlib1g-dev && \
-    rm -rf /var/lib/apt/lists/*
-
-WORKDIR /tritonserver/
-
-RUN wget https://github.com/triton-inference-server/server/releases/download/v2.16.0/tritonserver2.16.0-jetpack4.6.tgz && \
-    tar -xzf tritonserver2.16.0-jetpack4.6.tgz -C /tritonserver/ && \
-    rm tritonserver2.16.0-jetpack4.6.tgz
-
-ENV LD_LIBRARY_PATH=/tritonserver/backends/tensorflow1:$LD_LIBRARY_PATH
-
-CMD ["/tritonserver/bin/tritonserver", "--backend-directory", "/tritonserver/backends", "--model-repository", "/root/app/triton"]
+EXPOSE 8000-8002
+CMD ["tritonserver", "--model-repository=/models"]

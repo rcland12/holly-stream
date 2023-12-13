@@ -7,12 +7,12 @@ from ast import literal_eval
 class EnvArgumentParser():
     def __init__(self):
         self.dict = {}
-    
-    class define_dict(dict):
+
+    class _define_dict(dict):
         __getattr__ = dict.get
         __setattr__ = dict.__setitem__
         __delattr__ = dict.__delitem__
-    
+
     def add_arg(self, variable, default=None, type=str):
         env = os.environ.get(variable)
 
@@ -22,7 +22,7 @@ class EnvArgumentParser():
             value = self.cast_type(env, type)
 
         self.dict[variable] = value
-    
+
     def cast_type(self, arg, d_type):
         if d_type == list or d_type == tuple or d_type == bool:
             try:
@@ -38,7 +38,7 @@ class EnvArgumentParser():
                 raise ValueError(f"Argument {arg} does not match given data type or is not supported.")
     
     def parse_args(self):
-        return self.define_dict(self.dict)
+        return self._define_dict(self.dict)
 
 
 def create_warmup_file(save_path, np_array=None, string=False, img_path=None):

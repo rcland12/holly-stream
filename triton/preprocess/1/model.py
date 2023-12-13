@@ -33,6 +33,9 @@ class TritonPythonModel:
     def initialize(self, args):
         model_config = json.loads(args['model_config'])
         self.output0_config = pb_utils.get_output_config_by_name(model_config, "OUTPUT_0")
+        output0_dtype = pb_utils.triton_string_to_numpy(self.output0_config['data_type'])
+        print(output0_dtype)
+        self.new_shape = (640, 640)
 
     def execute(self, requests):
         output0_dtype = pb_utils.triton_string_to_numpy(self.output0_config['data_type'])
@@ -42,8 +45,8 @@ class TritonPythonModel:
         for request in requests:
             image = pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy()
 
-            img = letterbox(image, auto=False)
-            img = img.transpose((2, 0, 1)).astype(output0_dtype)
+            img = letterbox(image, self.new_shape, auto=False)
+            img = img.transpose((2, 0, 1)).astype('float32')
             img /= 255
 
             responses.append(
