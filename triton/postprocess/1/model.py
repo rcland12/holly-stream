@@ -1,10 +1,9 @@
-import json
 import torch
 import numpy as np
 import triton_python_backend_utils as pb_utils
 
 from torchvision.ops import nms
-from ensemble_boxes import weighted_boxes_fusion
+
 
 
 def box_area(box):
@@ -29,6 +28,7 @@ def non_max_suppression(
         img1_shape=(640, 640),
         conf_thres=0.3,
         iou_thres=0.25,
+        classes=None,
         max_det=300,
         max_nms=30000,
         scale=True,
@@ -37,36 +37,32 @@ def non_max_suppression(
     bs = prediction.shape[0]
     xc = prediction[..., 4] > conf_thres
 
-    # Settings
     max_nms = 30000
     redundant = True
     merge = True
 
     output = [torch.zeros((0, 6))] * bs
     for xi, x in enumerate(prediction):
-        # Apply constraints
         x = x[xc[xi]]
 
-        # If none remain process next image
         if not x.shape[0]:
             continue
 
-        # Compute conf
         x[:, 5:] *= x[:, 4:5]
 
-        # Box (center x, center y, width, height) to (x1, y1, x2, y2)
         box = xywh2xyxy(x[:, :4])
         conf, j = x[:, 5:].max(1, keepdim=True)
         x = torch.cat((box, conf, j.half()), 1)[conf.view(-1) > conf_thres]
 
-        # Check shape
+        if classes is not None:
+            x = x[(x[:, 5:6] == torch.tensor(classes)).any(1)]
+
         n = x.shape[0]
         if not n:
             continue
         elif n > max_nms:
             x = x[x[:, 4].argsort(descending=True)[:max_nms]]
 
-        # Batched NMS
         boxes, scores = x[:, :4], x[:, 4]
         i = nms(boxes, scores, iou_thres)
         if i.shape[0] > max_det:
@@ -106,7 +102,7 @@ class TritonPythonModel:
         # Set these parameters before you launch Triton
         # Leave self.classes=None unless you want a subset of the original classes.
         # e.g. if you want to inference on cats and dogs, set self.classes=[15, 16]
-        self.classes = None
+        self.classes = [16]
         self.new_shape = (640, 640)
         self.conf_thres = 0.3
         self.iou_thres = 0.25
@@ -123,8 +119,6 @@ class TritonPythonModel:
                     conf_thres=self.conf_thres,
                     iou_thres=self.iou_thres
                 )
-
-            print(results.shape)
 
             responses.append(
                 pb_utils.InferenceResponse(

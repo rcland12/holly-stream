@@ -49,6 +49,7 @@ def create_warmup_file(save_path, np_array=None, string=False, img_path=None):
     elif isinstance(img_path, str):
         import cv2
         img = cv2.imread(img_path)
+        print(img.shape)
         img.tofile(save_path)
     elif isinstance(string, str):
         from tritonclient.utils import serialize_byte_tensor
@@ -61,4 +62,4 @@ def create_warmup_file(save_path, np_array=None, string=False, img_path=None):
 
 if __name__ == "__main__":
     import numpy as np
-    create_warmup_file("../triton/preprocess/warmup/input_0", img_path="")
+    create_warmup_file("../triton/postprocess/warmup/input_1", np_array=np.array([1280, 720]))
