@@ -109,9 +109,9 @@ RUN apt-get update && \
 
 WORKDIR /tritonserver/
 
-RUN wget https://github.com/triton-inference-server/server/releases/download/v2.16.0/tritonserver2.16.0-jetpack4.6.tgz && \
-    tar -xzf tritonserver2.16.0-jetpack4.6.tgz -C /tritonserver/ && \
-    rm tritonserver2.16.0-jetpack4.6.tgz
+RUN wget https://github.com/triton-inference-server/server/releases/download/v2.19.0/tritonserver2.19.0-jetpack4.6.1.tgz && \
+    tar -xzf tritonserver2.19.0-jetpack4.6.1.tgz -C /tritonserver/ && \
+    rm tritonserver2.19.0-jetpack4.6.1.tgz
 
 ENV LD_LIBRARY_PATH=/tritonserver/backends/tensorflow1:$LD_LIBRARY_PATH
 
