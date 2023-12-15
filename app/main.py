@@ -149,8 +149,8 @@ class Annotator():
     def __init__(self, classes):
         self.classes = classes
         self.colors = list(numpy.random.rand(len(self.model.classes), 3) * 255)
-        self.santa_hat = cv2.cvtColor(cv2.imread("santa_hat.png"), cv2.COLOR_BGR2RGB)
-        self.santa_hat_mask = cv2.cvtColor(cv2.imread("santa_hat_mask.png"), cv2.COLOR_BGR2RGB)
+        self.santa_hat = cv2.cvtColor(cv2.imread("images/santa_hat.png"), cv2.COLOR_BGR2RGB)
+        self.santa_hat_mask = cv2.cvtColor(cv2.imread("images/santa_hat_mask.png"), cv2.COLOR_BGR2RGB)
 
     def __call__(self, frame, bboxes, confs, indexes):
         for i in range(len(bboxes)):

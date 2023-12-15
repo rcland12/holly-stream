@@ -93,4 +93,5 @@ RUN pip3 install --upgrade pip && \
 
 WORKDIR ${APPDIR}
 COPY main.py utilities.py ./
+COPY images/*.png ./images/
 CMD ["python3", "main.py"]
