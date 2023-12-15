@@ -94,8 +94,8 @@ class TritonRemoteModel:
 
     def _get_classes(self):
         label_filename = self.config["output"][0]["label_filename"]
-        docker_file_path = f"/root/app/triton/{self.model}/{label_filename}"
-        jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{self.model}/{label_filename}")
+        docker_file_path = f"/root/app/triton/{self.model_name}/{label_filename}"
+        jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{self.model_name}/{label_filename}")
 
         if os.path.isfile(docker_file_path):
             with open(docker_file_path, "r") as file:
@@ -343,26 +343,46 @@ if __name__ == "__main__":
     )
 
 
-# output [
+# postprocess warmup
+# model_warmup [
 #   {
-#     name: "output"
-#     data_type: TYPE_FP32
-#     dims: [ -1, -1, -1 ]
-#     label_filename: "yolov5_labels.txt"
-#   },
-#   {
-#     name: "345"
-#     data_type: TYPE_FP16
-#     dims: [ -1, -1, -1, -1, -1 ]
-#   },
-#   {
-#     name: "405"
-#     data_type: TYPE_FP16
-#     dims: [ -1, -1, -1, -1, -1 ]
-#   },
-#   {
-#     name: "465"
-#     data_type: TYPE_FP16
-#     dims: [ -1, -1, -1, -1, -1 ]
+#     name : "postprocess model warmup"
+#     batch_size: 1
+#     count: 1
+#     inputs {
+#       key: "INPUT_0"
+#       value: {
+#           data_type: TYPE_FP32
+#           dims: 1
+#           dims: 25200
+#           dims: 85
+#           input_data_file: "INPUT_0"
+#       }
+#     }
+#     inputs {
+#       key: "INPUT_1"
+#       value: {
+#           data_type: TYPE_INT16
+#           dims: 2
+#           input_data_file: "INPUT_1"
+#       }
+#     }
 #   }
 # ]
+
+# preprocess warmup
+# model_warmup [{
+#     name : "preprocess model warmup"
+#     batch_size: 1
+#     count: 1
+#     inputs {
+#       key: "INPUT_0"
+#       value: {
+#         data_type: TYPE_UINT8
+#         dims: 1280
+#         dims: 720
+#         dims: 3
+#         input_data_file: "INPUT_0"
+#       }
+#     }
+# }]

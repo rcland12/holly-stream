@@ -23,36 +23,10 @@ output [
   }
 ]
 
-model_warmup [
-  {
-    name : "postprocess model warmup"
-    batch_size: 1
-    count: 1
-    inputs {
-      key: "INPUT_0"
-      value: {
-          data_type: TYPE_FP32
-          dims: 1
-          dims: 25200
-          dims: 85
-          input_data_file: "INPUT_0"
-      }
-    }
-    inputs {
-      key: "INPUT_1"
-      value: {
-          data_type: TYPE_INT16
-          dims: 2
-          input_data_file: "INPUT_1"
-      }
-    }
-  }
-]
-
 instance_group [
   {
     count: 1
-    kind: KIND_CPU
+    kind: KIND_GPU
   }
 ]
 
