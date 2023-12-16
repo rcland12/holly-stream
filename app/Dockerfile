@@ -1,12 +1,6 @@
-FROM nvcr.io/nvidia/l4t-base:r32.7.1
+FROM nvcr.io/nvidia/l4t-ml:r32.7.1-py3
 ARG APPDIR="/root/app"
 ARG BUILDDIR="/root/build"
-
-# OpenCV (4.5.1) installation from source
-# The default OpenCV version on the Jetson Nano (Jetpack 4.6.1) is 4.1.1
-# The default version 4.1.1 causes dependency issues
-WORKDIR ${BUILDDIR}
-ARG OPENCV_VERSION="4.5.1"
 
 RUN sh -c "echo '/usr/local/cuda/lib64' >> /etc/ld.so.conf.d/nvidia-tegra.conf" && \
     ldconfig && \
@@ -30,36 +24,6 @@ RUN sh -c "echo '/usr/local/cuda/lib64' >> /etc/ld.so.conf.d/nvidia-tegra.conf" 
     libopenmpi-dev libomp-dev ffmpeg \
     libjpeg-dev zlib1g-dev libpython3-dev libfreetype6-dev
 
-RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip && \
-    wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/${OPENCV_VERSION}.zip && \
-    unzip opencv.zip && unzip opencv_contrib.zip && \
-    mv opencv-${OPENCV_VERSION} opencv && mv opencv_contrib-${OPENCV_VERSION} opencv_contrib && \
-    rm opencv.zip && rm opencv_contrib.zip && \
-    mkdir ./opencv/build
-
-WORKDIR ${BUILDDIR}/opencv/build
-
-RUN cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr \
-    -D OPENCV_EXTRA_MODULES_PATH=${BUILDDIR}/opencv_contrib/modules \
-    -D EIGEN_INCLUDE_PATH=/usr/include/eigen3 -D WITH_OPENCL=OFF \
-    -D WITH_CUDA=ON -D CUDA_ARCH_BIN=5.3 -D CUDA_ARCH_PTX="" \
-    -D WITH_CUDNN=ON -D WITH_CUBLAS=ON -D ENABLE_FAST_MATH=ON \
-    -D CUDA_FAST_MATH=ON -D OPENCV_DNN_CUDA=ON -D ENABLE_NEON=ON \
-    -D WITH_QT=OFF -D WITH_OPENMP=ON -D WITH_OPENGL=ON -D BUILD_TIFF=ON \
-    -D WITH_FFMPEG=ON -D WITH_GSTREAMER=ON -D WITH_TBB=ON -D BUILD_TBB=ON \
-    -D BUILD_TESTS=OFF -D WITH_EIGEN=ON -D WITH_V4L=ON -D WITH_LIBV4L=ON \
-    -D OPENCV_ENABLE_NONFREE=ON -D INSTALL_C_EXAMPLES=OFF \
-    -D INSTALL_PYTHON_EXAMPLES=OFF -D BUILD_NEW_PYTHON_SUPPORT=ON \
-    -D BUILD_opencv_python3=TRUE -D OPENCV_GENERATE_PKGCONFIG=ON \
-    -D BUILD_EXAMPLES=OFF .. && \
-    make -j4
-
-RUN make install && \
-    ldconfig && \
-    make clean && \
-    apt-get update && \
-    cd ../.. && rm -rf opencv opencv_contrib
-
 
 # PyTorch (1.8.0) and Torchvision (0.9.0) installation via pip wheel
 WORKDIR ${BUILDDIR}
@@ -82,14 +46,15 @@ RUN git clone --branch ${TORCHVISION_BRANCH} https://github.com/pytorch/vision t
 
 
 # Nvidia Triton Inference Server Client installation
-RUN wget https://github.com/triton-inference-server/server/releases/download/v2.16.0/tritonserver2.16.0-jetpack4.6.tgz && \
+ARG TRITON_VERSION="2.19.0"
+RUN wget https://github.com/triton-inference-server/server/releases/download/v${TRITON_VERSION}/tritonserver${TRITON_VERSION}-jetpack4.6.1.tgz && \
     mkdir tritonserver && \
-    tar -xzf tritonserver2.16.0-jetpack4.6.tgz -C ${BUILDDIR}/tritonserver/
+    tar -xzf tritonserver${TRITON_VERSION}-jetpack4.6.1.tgz -C ${BUILDDIR}/tritonserver/
 
 RUN pip3 install --upgrade pip && \
-    pip3 install --upgrade grpcio-tools numpy==1.19.4 future attrdict nanocamera && \
-    pip3 install --upgrade ${BUILDDIR}/tritonserver/clients/python/tritonclient-2.16.0-py3-none-any.whl[all] && \
-    rm tritonserver2.16.0-jetpack4.6.tgz
+    pip3 install --upgrade grpcio-tools numpy==1.19.4 future attrdict nanocamera imutils python-dotenv && \
+    pip3 install --upgrade ${BUILDDIR}/tritonserver/clients/python/tritonclient-${TRITON_VERSION}-py3-none-any.whl[all] && \
+    rm tritonserver${TRITON_VERSION}-jetpack4.6.1.tgz
 
 WORKDIR ${APPDIR}
 COPY main.py utilities.py ./

@@ -1,5 +1,4 @@
 import cv2
-
 from nanocamera import Camera
 
 

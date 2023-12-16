@@ -93,7 +93,7 @@ def non_max_suppression(
 
         tensor = tensor.numpy()
 
-    return output
+    return np.concatenate(output, axis=0)
 
 
 
@@ -102,7 +102,7 @@ class TritonPythonModel:
         # Set these parameters before you launch Triton
         # Leave self.classes=None unless you want a subset of the original classes.
         # e.g. if you want to inference on cats and dogs, set self.classes=[15, 16]
-        self.classes = [16]
+        self.classes = [57]
         self.new_shape = (640, 640)
         self.conf_thres = 0.3
         self.iou_thres = 0.25
@@ -111,19 +111,19 @@ class TritonPythonModel:
         responses = []
         for request in requests:
             results = non_max_suppression(
-                    torch.tensor(
-                        pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy()
-                    ),
-                    pb_utils.get_input_tensor_by_name(request, "INPUT_1").as_numpy(),
-                    img1_shape=self.new_shape,
-                    conf_thres=self.conf_thres,
-                    iou_thres=self.iou_thres
-                )
+                torch.tensor(
+                    pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy()
+                ),
+                pb_utils.get_input_tensor_by_name(request, "INPUT_1").as_numpy(),
+                img1_shape=self.new_shape,
+                conf_thres=self.conf_thres,
+                iou_thres=self.iou_thres
+            )
 
             responses.append(
                 pb_utils.InferenceResponse(
                     output_tensors=[
-                        pb_utils.Tensor("OUTPUT_0", np.array(results, dtype='float32')),
+                        pb_utils.Tensor("OUTPUT_0", results),
                     ]
                 )
             )

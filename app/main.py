@@ -138,9 +138,14 @@ class ObjectDetection():
             numpy.array(self.frame_dims, dtype='int16')
         ).tolist()
 
-        bboxes = [item[:4] for item in predictions]
-        confs = [round(float(item[4]), 2) for item in predictions]
-        indexes = [int(item[5]) for item in predictions]
+        if len(predictions) > 1:
+            bboxes = [item[:4] for item in predictions]
+            confs = [round(float(item[4]), 2) for item in predictions]
+            indexes = [int(item[5]) for item in predictions]
+        else:
+            bboxes = predictions[:4]
+            confs = round(float(predictions[4]), 2)
+            indexes = int(predictions[5])
 
         return bboxes, confs, indexes
 
@@ -148,7 +153,7 @@ class ObjectDetection():
 class Annotator():
     def __init__(self, classes):
         self.classes = classes
-        self.colors = list(numpy.random.rand(len(self.model.classes), 3) * 255)
+        self.colors = list(numpy.random.rand(len(self.classes), 3) * 255)
         self.santa_hat = cv2.cvtColor(cv2.imread("images/santa_hat.png"), cv2.COLOR_BGR2RGB)
         self.santa_hat_mask = cv2.cvtColor(cv2.imread("images/santa_hat_mask.png"), cv2.COLOR_BGR2RGB)
 
@@ -273,13 +278,10 @@ def main(
             model_name=model_name,
             camera_width=camera_width,
             camera_height=camera_height,
-            confidence_threshold=confidence_threshold,
-            iou_threshold=iou_threshold,
-            triton_url=triton_url,
-            classes=classes
+            triton_url=triton_url
         )
 
-        annotator = Annotator(model.classes)
+        annotator = Annotator(model.model.classes)
 
         period = 10
         tracking_index = 0
@@ -287,7 +289,7 @@ def main(
         while camera.isReady():
             frame = camera.read()
 
-            if tracking_index % period:
+            if tracking_index % period == 0:
                 bboxes, confs, indexes = model(frame)
                 tracking_index = 0
             
@@ -310,7 +312,7 @@ if __name__ == "__main__":
     load_dotenv()
     parser = EnvArgumentParser()
     parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
-    parser.add_arg("TRITON_URL", default="grpc://localhost:8001/", type=str)
+    parser.add_arg("TRITON_URL", default="grpc://localhost:8001", type=str)
     parser.add_arg("MODEL", default="yolov5n", type=str)
     parser.add_arg("CLASSES", default=None, type=list)
     parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)

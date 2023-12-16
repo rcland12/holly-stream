@@ -49,13 +49,14 @@ RUN git clone --branch ${TORCHVISION_BRANCH} https://github.com/pytorch/vision t
     cd .. && rm -rf torchvision
 
 
-# Tritonserver installation (2.19.0)
+# Nvidia Triton Inference Server installation (2.19.0)
+ARG TRITON_VERSION="2.19.0"
 ARG DEBIAN_FRONTEND=noninteractive
 WORKDIR /tritonserver/
 
-RUN wget https://github.com/triton-inference-server/server/releases/download/v2.19.0/tritonserver2.19.0-jetpack4.6.1.tgz && \
-    tar -xzf tritonserver2.19.0-jetpack4.6.1.tgz -C /tritonserver/ && \
-    rm tritonserver2.19.0-jetpack4.6.1.tgz
+RUN wget https://github.com/triton-inference-server/server/releases/download/v${TRITON_VERSION}/tritonserver${TRITON_VERSION}-jetpack4.6.1.tgz && \
+    tar -xzf tritonserver${TRITON_VERSION}-jetpack4.6.1.tgz -C /tritonserver/ && \
+    rm tritonserver${TRITON_VERSION}-jetpack4.6.1.tgz
 
 ENV LD_LIBRARY_PATH=/tritonserver/backends/tensorflow1:$LD_LIBRARY_PATH
 

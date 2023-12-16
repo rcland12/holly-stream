@@ -48,7 +48,7 @@ class TritonPythonModel:
                     output_tensors=[
                         pb_utils.Tensor(
                             "OUTPUT_0",
-                            img
+                            img[None]
                         )
                     ]
                 )
