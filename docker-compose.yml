@@ -6,6 +6,7 @@ services:
     build:
       context: ./triton
     network_mode: host
+    shm_size: '1gb'
     volumes:
       - "${PWD}/triton:/root/app/triton"
     healthcheck:

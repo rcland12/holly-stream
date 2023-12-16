@@ -40,7 +40,7 @@ class TritonPythonModel:
                 self.new_shape,
                 auto=False
             )
-            img = img.transpose((2, 0, 1)).astype('float32')
+            img = img.transpose((2, 0, 1)).astype('float16')
             img /= 255
 
             responses.append(

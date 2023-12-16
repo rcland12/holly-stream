@@ -46,7 +46,7 @@ ensemble_scheduling {
         value: "preprocessed_frame"
       }
       output_map {
-        key: "output0"
+        key: "output"
         value: "inference_response"
       }
     },
