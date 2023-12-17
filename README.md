@@ -8,8 +8,65 @@ sudo bash -c "echo '/var/swapfile swap swap defaults 0 0'  >> /etc/fstab"
 ```
 
 # Holly Stream
-This application will ingest your computers webcam feed (using ffmpeg), apply an object detection task on the feed with bounding boxes, and send that feed via RTMP to an address of your choice. You have the following options for recording and applying a custom object detection model:
+This application will ingest your Jetson's camera feed, apply an object detection task with bounding boxes, and send that feed via RTMP to an address of your choice. You have the option to send the video stream to another local machine, or an external web server.
 
+# Prerequisites
+On your Jetson Nano, there are a couple of recommended and required steps before you can harness the GPU.
+
+## Allocate more memory (recommended)
+Allocating more swap memory will use storage if your device needs more RAM. You can do so with the following commands:
+```bash
+sudo fallocate -l 4G /var/swapfile 
+sudo chmod 600 /var/swapfile
+sudo mkswap /var/swapfile
+sudo swapon /var/swapfile
+sudo bash -c "echo '/var/swapfile swap swap defaults 0 0'  >> /etc/fstab"
+```
+
+## Allow Docker GPU access (required)
+In order to allow Docker access to your Jetson Nano GPU, you will have to add the following lines to the file `/etc/docker/daemon.json`.
+```bash
+{
+    "runtimes": {
+        "nvidia": {
+            "path": "nvidia-container-runtime",
+            "runtimeArgs": []
+        }
+    },
+    "default-runtime": "nvidia"
+}
+```
+Once you add the line, restart the docker daemon with `sudo systemctl restart docker`.
+
+## Install Docker Compose (required)
+Install this on the Ubuntu system Python environment (not inside a Conda or Virtualenv evironment):
+```bash
+pip3 install --upgrade pip
+pip3 install docker-compose==1.27.4
+```
+
+Check if it was installed correctly:
+```bash
+docker-compose version
+```
+
+# Installation
+You can use Docker or the native operating system:
+
+## Docker Installation
+Pull the Jetson Image:
+```bash
+docker pull rcland12/detection-stream:jetson-latest
+```
+
+## Linux Installation
+This install script will install all dependencies needed for this application, including OpenCV, PyTorch, Torchvision, and the Triton Inference Client. You will be prompted to type your password in multiple times, and this script should take roughly two or three hours to complete.
+```bash
+./install.sh
+```
+
+# Deployment
+# 
 1. [Record a webcam feed from a Jetson Nano architecture.](#deploying-on-jetson-nano)
 2. [Record a webcam feed from a Linux machine.](#deploying-on-a-linux-machine)
 

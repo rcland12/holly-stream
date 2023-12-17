@@ -1,0 +1,39 @@
+name: "postprocess"
+backend: "python"
+max_batch_size: 0
+
+input [
+  {
+    name: "INPUT_0"
+    data_type: TYPE_FP32
+    dims: [ -1, 25200, -1 ]
+  },
+  {
+    name: "INPUT_1"
+    data_type: TYPE_INT16
+    dims: [ 2 ]
+  }
+]
+
+output [
+  {
+    name: "OUTPUT_0"
+    data_type: TYPE_FP32
+    dims: [ -1, -1 ]
+  }
+]
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
+
+version_policy: { 
+  latest: { num_versions: 1 }
+}
+
+response_cache { 
+  enable: True
+}
