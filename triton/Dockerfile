@@ -38,7 +38,7 @@ ARG TORCHVISION_BRANCH="release/0.9"
 # PyTorch
 RUN wget https://nvidia.box.com/shared/static/p57jwntv436lfrd78inwl7iml6p13fzh.whl \
     -O torch-${PYTORCH_VERSION}-cp36-cp36m-linux_aarch64.whl && \
-    pip3 install Cython torch-${PYTORCH_VERSION}-cp36-cp36m-linux_aarch64.whl && \
+    pip3 install Cython python-dotenv torch-${PYTORCH_VERSION}-cp36-cp36m-linux_aarch64.whl && \
     rm torch-${PYTORCH_VERSION}-cp36-cp36m-linux_aarch64.whl
 
 # Torchvision

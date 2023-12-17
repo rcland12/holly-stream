@@ -2,13 +2,15 @@ version: "3"
 
 services:
   triton:
-    image: rcland12/detection-stream:triton-latest
+    image: rcland12/detection-stream:triton-1.0
     build:
       context: ./triton
-    network_mode: host
     shm_size: '1gb'
     volumes:
       - "${PWD}/triton:/root/app/triton"
+    network_mode: "host"
+    env_file:
+      - ${PWD}/.env
     healthcheck:
       test: ["CMD", "curl", "-i", "-X", "GET", "http://localhost:8000/v2/health/ready"]
       interval: 30s
@@ -16,24 +18,22 @@ services:
       retries: 3
 
   jetson-stream:
-    image: rcland12/detection-stream:jetson-latest
+    image: rcland12/detection-stream:jetson-1.0
     build:
       context: ./app
-    network_mode: host
     devices:
       - "/dev/video0:/dev/video0"
     volumes:
       - "/tmp/.X11-unix:/tmp/.X11-unix"
       - "/tmp/argus_socket:/tmp/argus_socket"
       - "${PWD}/triton:/root/app/triton"
+    network_mode: "host"
     env_file:
       - ${PWD}/.env
-    depends_on:
-      - "triton"
     restart: unless-stopped
 
   nginx-stream:
-    image: rcland12/detection-stream:nginx-latest
+    image: rcland12/detection-stream:nginx-1.0
     build:
       context: ./nginx
     network_mode: host
@@ -46,7 +46,7 @@ services:
       retries: 3
 
   nginx-web:
-    image: rcland12/detection-stream:nginx-latest
+    image: rcland12/detection-stream:nginx-1.0
     build:
       context: ./nginx
     network_mode: host

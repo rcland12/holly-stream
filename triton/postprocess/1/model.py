@@ -1,10 +1,49 @@
+import os
 import torch
 import numpy as np
 import triton_python_backend_utils as pb_utils
 
+from ast import literal_eval
+from dotenv import load_dotenv
 from torchvision.ops import nms
 
 
+
+class EnvArgumentParser():
+    def __init__(self):
+        self.dict = {}
+
+    class _define_dict(dict):
+        __getattr__ = dict.get
+        __setattr__ = dict.__setitem__
+        __delattr__ = dict.__delitem__
+
+    def add_arg(self, variable, default=None, type=str):
+        env = os.environ.get(variable)
+
+        if env is None:
+            value = default
+        else:
+            value = self.cast_type(env, type)
+
+        self.dict[variable] = value
+
+    def cast_type(self, arg, d_type):
+        if d_type == list or d_type == tuple or d_type == bool:
+            try:
+                cast_value = literal_eval(arg)
+                return cast_value
+            except (ValueError, SyntaxError):
+                raise ValueError(f"Argument {arg} does not match given data type or is not supported.")
+        else:
+            try:
+                cast_value = d_type(arg)
+                return cast_value
+            except (ValueError, SyntaxError):
+                raise ValueError(f"Argument {arg} does not match given data type or is not supported.")
+    
+    def parse_args(self):
+        return self._define_dict(self.dict)
 
 def box_area(box):
     return (box[2] - box[0]) * (box[3] - box[1])
@@ -99,13 +138,18 @@ def non_max_suppression(
 
 class TritonPythonModel:
     def initialize(self, args):
-        # Set these parameters before you launch Triton
-        # Leave self.classes=None unless you want a subset of the original classes.
-        # e.g. if you want to inference on cats and dogs, set self.classes=[15, 16]
-        self.classes = [57]
-        self.new_shape = (640, 640)
-        self.conf_thres = 0.3
-        self.iou_thres = 0.25
+        load_dotenv()
+        parser = EnvArgumentParser()
+        parser.add_arg("CLASSES", default=None, type=list)
+        parser.add_arg("MODEL_DIMS", default=(640, 640), type=tuple)
+        parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
+        parser.add_arg("IOU_THRESHOLD", default=0.25, type=float)
+        args = parser.parse_args()
+
+        self.classes = args.CLASSES
+        self.model_dims = args.MODEL_DIMS
+        self.conf_thres = args.CONFIDENCE_THRESHOLD
+        self.iou_thres = args.IOU_THRESHOLD
  
     def execute(self, requests):
         responses = []
@@ -115,9 +159,10 @@ class TritonPythonModel:
                     pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy()
                 ),
                 pb_utils.get_input_tensor_by_name(request, "INPUT_1").as_numpy(),
-                img1_shape=self.new_shape,
+                img1_shape=self.model_dims,
                 conf_thres=self.conf_thres,
-                iou_thres=self.iou_thres
+                iou_thres=self.iou_thres,
+                classes=self.classes
             )
 
             responses.append(
@@ -131,5 +176,4 @@ class TritonPythonModel:
         return responses
 
     def finalize(self):
-        
         print('Cleaning up...')

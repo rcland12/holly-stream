@@ -70,7 +70,7 @@ class TritonRemoteModel:
         for output in self.metadata['outputs']:
             tensor = torch.tensor(response.as_numpy(output['name']))
             result.append(tensor)
-        return result[0][0] if len(result) == 1 else result
+        return result[0] if len(result) == 1 else result
 
     def _create_inputs(self, *args, **kwargs):
         args_len, kwargs_len = len(args), len(kwargs)
@@ -138,14 +138,9 @@ class ObjectDetection():
             numpy.array(self.frame_dims, dtype='int16')
         ).tolist()
 
-        if len(predictions) > 1:
-            bboxes = [item[:4] for item in predictions]
-            confs = [round(float(item[4]), 2) for item in predictions]
-            indexes = [int(item[5]) for item in predictions]
-        else:
-            bboxes = predictions[:4]
-            confs = round(float(predictions[4]), 2)
-            indexes = int(predictions[5])
+        bboxes = [item[:4] for item in predictions]
+        confs = [round(float(item[4]), 2) for item in predictions]
+        indexes = [int(item[5]) for item in predictions]
 
         return bboxes, confs, indexes
 
@@ -154,8 +149,8 @@ class Annotator():
     def __init__(self, classes):
         self.classes = classes
         self.colors = list(numpy.random.rand(len(self.classes), 3) * 255)
-        self.santa_hat = cv2.cvtColor(cv2.imread("images/santa_hat.png"), cv2.COLOR_BGR2RGB)
-        self.santa_hat_mask = cv2.cvtColor(cv2.imread("images/santa_hat_mask.png"), cv2.COLOR_BGR2RGB)
+        self.santa_hat = cv2.imread("images/santa_hat.png")
+        self.santa_hat_mask = cv2.imread("images/santa_hat_mask.png")
 
     def __call__(self, frame, bboxes, confs, indexes):
         for i in range(len(bboxes)):
@@ -173,7 +168,7 @@ class Annotator():
                 img=frame,
                 text=f'{self.classes[indexes[i]]} ({str(confs[i])})',
                 org=(xmin, ymin),
-                fontFace=cv2.FONT_HERSHEY_PLAIN ,
+                fontFace=cv2.FONT_HERSHEY_PLAIN,
                 fontScale=0.75,
                 color=color,
                 thickness=1,
@@ -182,44 +177,43 @@ class Annotator():
 
         return frame
 
-    def _overlay_obj(self, frame, bbox):
-        resize_width = bbox[3]-bbox[1]
+    def _overlay_obj(self, frame, bbox, width, height):
+        bbox = [int(i * scalar) for i, scalar in zip(bbox, [width, height, width, height])]
+        x, y = bbox[0], bbox[1] + 20
+
+        resize_width = bbox[2]-bbox[0]
         santa_hat = imutils.resize(self.santa_hat.copy(), width=resize_width)
         santa_hat_mask = imutils.resize(self.santa_hat_mask.copy(), width=resize_width)
+        hat_height, hat_width = santa_hat.shape[0], santa_hat.shape[1]
 
-        x, y = bbox[:2]
-        bg = frame.copy()
-        h_bg, w_bg = bg.shape[0], bg.shape[1]
-        h, w = santa_hat.shape[0], santa_hat.shape[1]
-        
-        mask_boolean = santa_hat_mask[:,:,0] == 0
+        mask_boolean = santa_hat_mask[:, :, 0] == 0
         mask_rgb_boolean = numpy.stack([mask_boolean, mask_boolean, mask_boolean], axis=2)
-        
+
         if x >= 0 and y >= 0:
-            h_part = h - max(0, y+h-h_bg)
-            w_part = w - max(0, x+w-w_bg)
-            bg[y:y+h_part, x:x+w_part, :] = bg[y:y+h_part, x:x+w_part, :] * ~mask_rgb_boolean[0:h_part, 0:w_part, :] + (santa_hat * mask_rgb_boolean)[0:h_part, 0:w_part, :]
+            h = hat_height - max(0, y+hat_height-height)
+            w = hat_width - max(0, x+hat_width-width)
+            frame[y-h:y, x:x+w, :] = frame[y-h:y, x:x+w, :] * ~mask_rgb_boolean[0:h, 0:w, :] + (santa_hat * mask_rgb_boolean)[0:h, 0:w, :]
             
         elif x < 0 and y < 0:
-            h_part = h + y
-            w_part = w + x
-            bg[0:0+h_part, 0:0+w_part, :] = bg[0:0+h_part, 0:0+w_part, :] * ~mask_rgb_boolean[h-h_part:h, w-w_part:w, :] + (santa_hat * mask_rgb_boolean)[h-h_part:h, w-w_part:w, :]
+            h = hat_height + y
+            w = hat_width + x
+            frame[0:0+h, 0:0+w, :] = frame[0:0+h, 0:0+w, :] * ~mask_rgb_boolean[hat_height-h:hat_height, hat_width-w:hat_width, :] + (santa_hat * mask_rgb_boolean)[hat_height-h:hat_height, hat_width-w:hat_width, :]
             
         elif x < 0 and y >= 0:
-            h_part = h - max(0, y+h-h_bg)
-            w_part = w + x
-            bg[y:y+h_part, 0:0+w_part, :] = bg[y:y+h_part, 0:0+w_part, :] * ~mask_rgb_boolean[0:h_part, w-w_part:w, :] + (santa_hat * mask_rgb_boolean)[0:h_part, w-w_part:w, :]
+            h = hat_height - max(0, y+hat_height-height)
+            w = hat_width + x
+            frame[y:y+h, 0:0+w, :] = frame[y:y+h, 0:0+w, :] * ~mask_rgb_boolean[0:h, hat_width-w:hat_width, :] + (santa_hat * mask_rgb_boolean)[0:h, hat_width-w:hat_width, :]
             
         elif x >= 0 and y < 0:
-            h_part = h + y
-            w_part = w - max(0, x+w-w_bg)
-            bg[0:0+h_part, x:x+w_part, :] = bg[0:0+h_part, x:x+w_part, :] * ~mask_rgb_boolean[h-h_part:h, 0:w_part, :] + (santa_hat * mask_rgb_boolean)[h-h_part:h, 0:w_part, :]
+            h = hat_height + y
+            w = hat_width - max(0, x+hat_width-width)
+            frame[0:0+h, x:x+w, :] = frame[0:0+h, x:x+w, :] * ~mask_rgb_boolean[hat_height-h:hat_height, 0:w, :] + (santa_hat * mask_rgb_boolean)[hat_height-h:hat_height, 0:w, :]
         
-        return bg
+        return frame
 
-    def santa_hat_plugin(self, frame, bboxes, confs):
+    def santa_hat_plugin(self, frame, bboxes, confs, width, height):
         max_index = max(range(len(confs)), key=confs.__getitem__)
-        return self._overlay_obj(frame, bboxes[max_index])
+        return self._overlay_obj(frame, bboxes[max_index].copy(), width, height)
     
 
 
@@ -227,9 +221,6 @@ def main(
     object_detection,
     triton_url,
     model_name,
-    classes,
-    confidence_threshold,
-    iou_threshold,
     stream_ip,
     stream_port,
     stream_application,
@@ -293,8 +284,15 @@ def main(
                 bboxes, confs, indexes = model(frame)
                 tracking_index = 0
             
-            frame = annotator.santa_hat_plugin(frame, bboxes, confs)
-            # frame = annotator(frame, bboxes, confs, indexes)
+            if bboxes:
+                frame = annotator.santa_hat_plugin(
+                    frame,
+                    bboxes,
+                    confs,
+                    camera_width,
+                    camera_height
+                )
+                # frame = annotator(frame, bboxes, confs, indexes)
             tracking_index += 1
 
             p.stdin.write(frame.tobytes())
@@ -314,9 +312,6 @@ if __name__ == "__main__":
     parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
     parser.add_arg("TRITON_URL", default="grpc://localhost:8001", type=str)
     parser.add_arg("MODEL", default="yolov5n", type=str)
-    parser.add_arg("CLASSES", default=None, type=list)
-    parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
-    parser.add_arg("IOU_THRESHOLD", default=0.45, type=float)
     parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
     parser.add_arg("STREAM_PORT", default=1935, type=int)
     parser.add_arg("STREAM_APPLICATION", default="live", type=str)
@@ -331,9 +326,6 @@ if __name__ == "__main__":
         args.OBJECT_DETECTION,
         args.TRITON_URL,
         args.MODEL,
-        args.CLASSES,
-        args.CONFIDENCE_THRESHOLD,
-        args.IOU_THRESHOLD,
         args.STREAM_IP,
         args.STREAM_PORT,
         args.STREAM_APPLICATION,
