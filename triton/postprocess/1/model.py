@@ -88,7 +88,6 @@ def non_max_suppression(
             continue
 
         x[:, 5:] *= x[:, 4:5]
-
         box = xywh2xyxy(x[:, :4])
         conf, j = x[:, 5:].max(1, keepdim=True)
         x = torch.cat((box, conf, j.half()), 1)[conf.view(-1) > conf_thres]
@@ -156,7 +155,9 @@ class TritonPythonModel:
         for request in requests:
             results = non_max_suppression(
                 torch.tensor(
-                    pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy()
+                    np.float32(
+                        pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy()
+                    )
                 ),
                 pb_utils.get_input_tensor_by_name(request, "INPUT_1").as_numpy(),
                 img1_shape=self.model_dims,

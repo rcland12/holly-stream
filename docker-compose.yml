@@ -11,6 +11,7 @@ services:
     network_mode: "host"
     env_file:
       - ${PWD}/.env
+    runtime: nvidia
     healthcheck:
       test: ["CMD", "curl", "-i", "-X", "GET", "http://localhost:8000/v2/health/ready"]
       interval: 30s
@@ -27,6 +28,7 @@ services:
       - "/tmp/.X11-unix:/tmp/.X11-unix"
       - "/tmp/argus_socket:/tmp/argus_socket"
       - "${PWD}/triton:/root/app/triton"
+      - "${PWD}/yolov5:/root/app/yolov5"
     network_mode: "host"
     env_file:
       - ${PWD}/.env

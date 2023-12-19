@@ -71,7 +71,7 @@ def letterbox(
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
     im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
 
-    return im.transpose((2, 0, 1)).astype(out_type)
+    return im.transpose((2, 0, 1))[::-1].astype(out_type)
 
 
 

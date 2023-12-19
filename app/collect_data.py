@@ -21,18 +21,18 @@ def main(
 	)
 
     frame_index = 0
-    picture_index = 0
+    start_index = 0
     take_picture = camera_fps * period
 
     while camera.isReady():
         frame = camera.read()
 
-        if frame_index % take_picture:
-            cv2.imwrite(save_path + f"pic_{picture_index}.png", frame)
-            print(f"Saving image {picture_index}/{number_to_save}")
-            picture_index += 1
+        if frame_index % take_picture == 0:
+            cv2.imwrite(save_path + f"pic_{start_index}.png", frame, cv2.COLOR_RGB2BGR)
+            print(f"Saving image {start_index}/{number_to_save}")
+            start_index += 1
 
-            if picture_index == number_to_save:
+            if start_index == number_to_save:
                 break
         
         frame_index += 1
@@ -44,7 +44,7 @@ def main(
 
 if __name__ == "__main__":
     main(
-        save_path="../data/images/train/",
+        save_path="../data/",
         number_to_save=100,
         period=5,
         camera_index=0,

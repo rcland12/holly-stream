@@ -6,7 +6,7 @@
 stream-*.ts
 tritonserver/
 data/
-triton2/
+holly/
 
 ### Linux ###
 *~
