@@ -1,10 +1,10 @@
 # Holly Stream
-This application will ingest your Jetson's camera feed, apply an object detection task with bounding boxes, and send that feed via RTMP to an address of your choice. You have the option to send the video stream to another local machine, or an external web server.
+This application will ingest your Jetson's camera feed, apply an object detection task with bounding boxes, and send that feed via RTMP to an address of your choice. Watch the stream on your Jetson, another local machine, or an external web server.
 
 # Prerequisites
 On your Jetson Nano, there are a couple of recommended and required steps before you can harness the GPU.
 
-## Allocate more memory (recommended)
+## (recommended) Allocate more memory
 Allocating more swap memory will use storage if your device needs more RAM. You can do so with the following commands:
 ```bash
 sudo fallocate -l 4G /var/swapfile 
@@ -14,8 +14,8 @@ sudo swapon /var/swapfile
 sudo bash -c "echo '/var/swapfile swap swap defaults 0 0'  >> /etc/fstab"
 ```
 
-## Allow Docker GPU access (required)
-In order to allow Docker access to your Jetson Nano GPU, you will have to add the following lines to the file `/etc/docker/daemon.json`.
+## (required) Allow Docker GPU access
+In order to allow Docker access to your Jetson Nano GPU, you will have to add the following argument, `"default-runtime": "nvidia"` to the file `/etc/docker/daemon.json`:
 ```bash
 {
     "runtimes": {
@@ -29,7 +29,7 @@ In order to allow Docker access to your Jetson Nano GPU, you will have to add th
 ```
 Once you add the line, restart the docker daemon with `sudo systemctl restart docker`.
 
-## Install Docker Compose (required)
+## (required) Install Docker Compose
 Install this on the Ubuntu system Python environment (not inside a Conda or Virtualenv evironment):
 ```bash
 pip3 install --upgrade pip
@@ -41,10 +41,10 @@ Check if it was installed correctly:
 docker-compose version
 ```
 
-## Train a custom YOLOv5 model, or use the default
-Object detection is optional on the stream, you will see later there is an option to turn it off. If you want object detection you will need to train a custom model using [YOLOv5](https://github.com/ultralytics/yolov5). Follow these steps if you want to train a model from scratch. If you want to use a pretrained YOLOv5 model, skip to step 4.
+## (optional) Train a custom YOLOv5 model
+This repository comes supplied with the default YOLOv5 small model, trained on 80 [classes](#change-the-default-class-predictor). It is already in TensorRT format (`model.plan`) optimzed to run on Jetson Nano architecture. However, you can train your own custom mode using the [YOLOv5 repo](https://github.com/ultralytics/yolov5). Follow these steps if you want to train a model from scratch. It is highly recommended to use a CUDA-enabled machine for training. If you already have a trained model in PyTorch format (`.pt`) skip to step 4.
 
-1. Gather data. Collect images of the object you want to detect. I created a script at `app/collect_data.py` to make this process easier.
+1. Gather data. Collect images of the object(s) you want to detect. I created a script at `app/collect_data.py` to make this process easier.
 
 2. Annotate your data in YOLO format. I highly recommend [Roboflow](https://roboflow.com/) for this and using a 70/30 split between your training and validation data.
 
