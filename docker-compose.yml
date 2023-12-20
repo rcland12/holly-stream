@@ -2,7 +2,7 @@ version: "3"
 
 services:
   triton:
-    image: rcland12/detection-stream:triton-1.0
+    image: rcland12/detection-stream:triton-latest
     build:
       context: ./triton
     shm_size: '1gb'
@@ -19,7 +19,7 @@ services:
       retries: 3
 
   jetson-stream:
-    image: rcland12/detection-stream:jetson-1.0
+    image: rcland12/detection-stream:jetson-latest
     build:
       context: ./app
     devices:
@@ -35,7 +35,7 @@ services:
     restart: unless-stopped
 
   nginx-stream:
-    image: rcland12/detection-stream:nginx-1.0
+    image: rcland12/detection-stream:nginx-latest
     build:
       context: ./nginx
     network_mode: host
@@ -48,7 +48,7 @@ services:
       retries: 3
 
   nginx-web:
-    image: rcland12/detection-stream:nginx-1.0
+    image: rcland12/detection-stream:nginx-latest
     build:
       context: ./nginx
     network_mode: host

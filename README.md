@@ -1,3 +1,16 @@
+## Adding a new custom model
+First, train a YOLOv5 model.
+
+Second, export model as onnx using opset 15:
+```bash
+python export.py --include onnx --weights yolov5n.pt --simplify --half --device 0 --opset 15
+```
+The `--simplify` flag will:
+> ONNX Simplifier is presented to simplify the ONNX model. It infers the whole computation graph and then replaces the redundant operators with their constant outputs (a.k.a. constant folding).
+The `--half` flag will convert the model to allow floating point 16 instead of 32. A CUDA device is required for this flag, hence the `--device 0` flag.
+The `--opset 15` flag is required for compatability on the Jetson Nano. The default is 17, but that is incompatible with the Triton Version on the Jetson Nano.
+
+## Stuff
 Allocate more swap memory for your Jetson Nano
 ```bash
 sudo fallocate -l 4G /var/swapfile 

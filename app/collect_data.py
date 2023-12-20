@@ -6,6 +6,7 @@ from nanocamera import Camera
 def main(
     save_path,
     number_to_save=100,
+    start_index=0,
     period=5,
     camera_index=0,
     camera_width=1280,
@@ -21,14 +22,14 @@ def main(
 	)
 
     frame_index = 0
-    start_index = 0
+    number_to_save = number_to_save + start_index
     take_picture = camera_fps * period
 
     while camera.isReady():
         frame = camera.read()
 
         if frame_index % take_picture == 0:
-            cv2.imwrite(save_path + f"pic_{start_index}.png", frame, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(save_path + f"pic_{start_index}.png", frame)
             print(f"Saving image {start_index}/{number_to_save}")
             start_index += 1
 
@@ -46,6 +47,7 @@ if __name__ == "__main__":
     main(
         save_path="../data/",
         number_to_save=100,
+        start_index=236,
         period=5,
         camera_index=0,
         camera_width=1280,
