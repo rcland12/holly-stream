@@ -26,7 +26,7 @@ output [
 model_warmup [
   {
     name : "postprocess model warmup"
-    batch_size: 1
+    batch_size: 2
     inputs {
       key: "INPUT_0"
       value: {

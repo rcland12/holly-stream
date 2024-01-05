@@ -20,7 +20,7 @@ output [
 
 model_warmup [{
     name : "object detection model warmup"
-    batch_size: 1
+    batch_size: 2
     inputs {
       key: "images"
       value: {

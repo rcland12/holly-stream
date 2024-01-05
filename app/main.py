@@ -181,8 +181,8 @@ class Annotator():
 
         return frame
 
-    def _overlay_obj(self, frame, bbox, width, height):
-        bbox = [int(i * scalar) for i, scalar in zip(bbox, [width, height, width, height])]
+    def _overlay_obj(self, frame, bbox):
+        bbox = [int(i * scalar) for i, scalar in zip(bbox, [self.width, self.height, self.width, self.height])]
         x, y = bbox[0], bbox[1] + 20
 
         resize_width = bbox[2]-bbox[0]
@@ -194,8 +194,8 @@ class Annotator():
         mask_rgb_boolean = numpy.stack([mask_boolean, mask_boolean, mask_boolean], axis=2)
 
         if x >= 0 and y >= 0:
-            h = hat_height - max(0, y+hat_height-height)
-            w = hat_width - max(0, x+hat_width-width)
+            h = hat_height - max(0, y+hat_height-self.height)
+            w = hat_width - max(0, x+hat_width-self.width)
             frame[y-h:y, x:x+w, :] = frame[y-h:y, x:x+w, :] * ~mask_rgb_boolean[0:h, 0:w, :] + (santa_hat * mask_rgb_boolean)[0:h, 0:w, :]
             
         elif x < 0 and y < 0:
@@ -204,20 +204,21 @@ class Annotator():
             frame[0:0+h, 0:0+w, :] = frame[0:0+h, 0:0+w, :] * ~mask_rgb_boolean[hat_height-h:hat_height, hat_width-w:hat_width, :] + (santa_hat * mask_rgb_boolean)[hat_height-h:hat_height, hat_width-w:hat_width, :]
             
         elif x < 0 and y >= 0:
-            h = hat_height - max(0, y+hat_height-height)
+            h = hat_height - max(0, y+hat_height-self.height)
             w = hat_width + x
             frame[y:y+h, 0:0+w, :] = frame[y:y+h, 0:0+w, :] * ~mask_rgb_boolean[0:h, hat_width-w:hat_width, :] + (santa_hat * mask_rgb_boolean)[0:h, hat_width-w:hat_width, :]
             
         elif x >= 0 and y < 0:
             h = hat_height + y
-            w = hat_width - max(0, x+hat_width-width)
+            w = hat_width - max(0, x+hat_width-self.width)
             frame[0:0+h, x:x+w, :] = frame[0:0+h, x:x+w, :] * ~mask_rgb_boolean[hat_height-h:hat_height, 0:w, :] + (santa_hat * mask_rgb_boolean)[hat_height-h:hat_height, 0:w, :]
         
         return frame
 
-    def santa_hat_plugin(self, frame, bboxes, confs, width, height):
+    def santa_hat_plugin(self, frame, bboxes, confs):
+        # For santa hat plugin, turn Normalize to True in nms function
         max_index = max(range(len(confs)), key=confs.__getitem__)
-        return self._overlay_obj(frame, bboxes[max_index].copy(), width, height)
+        return self._overlay_obj(frame, bboxes[max_index].copy())
     
 
 
