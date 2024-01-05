@@ -60,4 +60,5 @@ def create_warmup_file(save_path, np_array=None, string=False, img_path=None):
 
 if __name__ == "__main__":
     import numpy as np
+    create_warmup_file("../triton/preprocess/warmup/INPUT_0", img_path="./images/pic_228.png")
     create_warmup_file("../triton/postprocess/warmup/input_1", np_array=np.array([1280, 720]))

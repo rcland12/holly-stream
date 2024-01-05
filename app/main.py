@@ -285,14 +285,14 @@ def main(
                 tracking_index = 0
             
             if bboxes:
-                frame = annotator.santa_hat_plugin(
-                    frame,
-                    bboxes,
-                    confs,
-                    camera_width,
-                    camera_height
-                )
-                # frame = annotator(frame, bboxes, confs, indexes)
+                frame = annotator(frame, bboxes, confs, indexes)
+                # frame = annotator.santa_hat_plugin(
+                #     frame,
+                #     bboxes,
+                #     confs,
+                #     camera_width,
+                #     camera_height
+                # )
             tracking_index += 1
 
             p.stdin.write(frame.tobytes())
@@ -335,48 +335,3 @@ if __name__ == "__main__":
         args.CAMERA_HEIGHT,
         args.CAMERA_FPS
     )
-
-
-# postprocess warmup
-# model_warmup [
-#   {
-#     name : "postprocess model warmup"
-#     batch_size: 1
-#     count: 1
-#     inputs {
-#       key: "INPUT_0"
-#       value: {
-#           data_type: TYPE_FP32
-#           dims: 1
-#           dims: 25200
-#           dims: 85
-#           input_data_file: "INPUT_0"
-#       }
-#     }
-#     inputs {
-#       key: "INPUT_1"
-#       value: {
-#           data_type: TYPE_INT16
-#           dims: 2
-#           input_data_file: "INPUT_1"
-#       }
-#     }
-#   }
-# ]
-
-# preprocess warmup
-# model_warmup [{
-#     name : "preprocess model warmup"
-#     batch_size: 1
-#     count: 1
-#     inputs {
-#       key: "INPUT_0"
-#       value: {
-#         data_type: TYPE_UINT8
-#         dims: 1280
-#         dims: 720
-#         dims: 3
-#         input_data_file: "INPUT_0"
-#       }
-#     }
-# }]
