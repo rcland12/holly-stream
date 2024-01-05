@@ -163,7 +163,8 @@ class TritonPythonModel:
                 img1_shape=self.model_dims,
                 conf_thres=self.conf_thres,
                 iou_thres=self.iou_thres,
-                classes=self.classes
+                classes=self.classes,
+                normalize=False
             )
 
             responses.append(
