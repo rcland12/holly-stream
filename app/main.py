@@ -146,19 +146,18 @@ class ObjectDetection():
 
 
 class Annotator():
-    def __init__(self, classes):
+    def __init__(self, classes, width=1280, height=720):
         self.classes = classes
+        self.width = width
+        self.height = height
         self.colors = list(numpy.random.rand(len(self.classes), 3) * 255)
         self.santa_hat = cv2.imread("images/santa_hat.png")
         self.santa_hat_mask = cv2.imread("images/santa_hat_mask.png")
 
     def __call__(self, frame, bboxes, confs, indexes):
         for i in range(len(bboxes)):
-            xmin, ymin, xmax, ymax = bboxes[i]
-            print(xmin)
-            print(ymin)
-            print(xmax)
-            print(ymax)
+            xmin, xmax = bboxes[i][0]*self.width, bboxes[i][2]*self.width
+            ymin, ymax = bboxes[i][1]*self.height, bboxes[i][3]*self.height
             color = self.colors[indexes[i]]
             frame = cv2.rectangle(
                 img=frame,
@@ -276,7 +275,11 @@ def main(
             triton_url=triton_url
         )
 
-        annotator = Annotator(model.model.classes)
+        annotator = Annotator(
+            model.model.classes,
+            camera_width,
+            camera_height
+        )
 
         period = 10
         tracking_index = 0
@@ -290,13 +293,7 @@ def main(
             
             if bboxes:
                 frame = annotator(frame, bboxes, confs, indexes)
-                # frame = annotator.santa_hat_plugin(
-                #     frame,
-                #     bboxes,
-                #     confs,
-                #     camera_width,
-                #     camera_height
-                # )
+                # frame = annotator.santa_hat_plugin(frame, bboxes, confs)
             tracking_index += 1
 
             p.stdin.write(frame.tobytes())
