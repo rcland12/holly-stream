@@ -157,8 +157,6 @@ class Annotator():
     def __call__(self, frame, bboxes, confs, indexes):
         for i in range(len(bboxes)):
             xmin, ymin, xmax, ymax = [int(j) for j in bboxes[i]]
-            # xmin, xmax = int(bboxes[i][0]), int(bboxes[i][2])
-            # ymin, ymax = int(bboxes[i][1]), int(bboxes[i][3])
             color = self.colors[indexes[i]]
             frame = cv2.rectangle(
                 img=frame,
