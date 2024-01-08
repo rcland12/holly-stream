@@ -6,7 +6,7 @@
 stream-*.ts
 tritonserver/
 data/
-triton2/
+holly/
 
 ### Linux ###
 *~
@@ -146,6 +146,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
+*.env
 .env
 .venv
 env/
