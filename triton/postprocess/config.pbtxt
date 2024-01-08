@@ -26,7 +26,7 @@ output [
 model_warmup [
   {
     name : "postprocess model warmup"
-    batch_size: 2
+    batch_size: 1
     inputs {
       key: "INPUT_0"
       value: {
@@ -50,7 +50,7 @@ model_warmup [
 
 instance_group [
   {
-    count: 2
+    count: 1
     kind: KIND_CPU
   }
 ]

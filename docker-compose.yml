@@ -6,12 +6,11 @@ services:
     image: rcland12/detection-stream:triton-latest
     build:
       context: ./triton
-    shm_size: '1gb'
+    shm_size: 128mb
     volumes:
       - ./triton:/root/app/triton
-    network_mode: "host"
-    env_file:
-      - .env
+    network_mode: host
+    env_file: .env
     runtime: nvidia
     healthcheck:
       test: [ "CMD", "curl", "-i", "-X", "GET", "http://localhost:8000/v2/health/ready" ]
@@ -28,9 +27,9 @@ services:
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix
       - /tmp/argus_socket:/tmp/argus_socket
-    network_mode: "host"
-    env_file:
-      - .env
+      - ./triton:/root/app/triton
+    network_mode: host
+    env_file: .env
     restart: unless-stopped
 
   nginx-stream:

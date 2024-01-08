@@ -20,7 +20,7 @@ output [
 
 model_warmup [{
     name : "object detection model warmup"
-    batch_size: 2
+    batch_size: 1
     inputs {
       key: "images"
       value: {
@@ -36,7 +36,7 @@ model_warmup [{
 
 instance_group [
   {
-    count: 2
+    count: 1
     kind: KIND_GPU
   }
 ]
