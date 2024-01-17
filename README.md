@@ -5,7 +5,7 @@ This application will ingest your Jetson's camera feed, apply an object detectio
 On your Jetson Nano, there are a couple of recommended and required steps before you can harness the GPU.
 
 ## (recommended) Allocate more memory
-Allocating more swap memory will use storage if your device needs more RAM. You can do so with the following commands:
+Allocating more swap memory will use storage if your device needs more memory. You can do so with the following commands:
 ```bash
 sudo fallocate -l 4G /var/swapfile 
 sudo chmod 600 /var/swapfile
@@ -30,7 +30,7 @@ In order to allow Docker access to your Jetson Nano GPU, you will have to add th
 Once you add the line, restart the docker daemon with `sudo systemctl restart docker`.
 
 ## (required) Install Docker Compose
-Install this on the Ubuntu system Python environment (not inside a Conda or Virtualenv evironment):
+Install this on the Ubuntu system Python environment (not inside a venv, virtualenv, or Conda evironment):
 ```bash
 pip3 install --upgrade pip
 pip3 install docker-compose==1.27.4
@@ -42,7 +42,7 @@ docker-compose version
 ```
 
 ## (optional) Train a custom YOLOv5 model
-This repository comes supplied with the default YOLOv5 small model, trained on 80 [classes](#change-the-default-class-predictor). It is already in TensorRT format (`model.plan`) optimzed to run on Jetson Nano architecture. However, you can train your own custom mode using the [YOLOv5 repo](https://github.com/ultralytics/yolov5). Follow these steps if you want to train a model from scratch. It is highly recommended to use a CUDA-enabled machine for training. If you already have a trained model in PyTorch format (`.pt`) skip to step 4.
+This repository comes supplied with the default YOLOv5 medium model, trained on 80 [classes](#change-the-default-class-predictor). It is already in TensorRT format (`model.plan`) optimzed to run on Jetson Nano architecture. However, you can train your own custom model using the [YOLOv5 repo](https://github.com/ultralytics/yolov5). Follow these steps if you want to train a model from scratch. It is highly recommended to use a CUDA-enabled machine for training. If you already have a trained model in PyTorch format (`.pt`) skip to step 4.
 
 1. Gather data. Collect images of the object(s) you want to detect. I created a script at `app/collect_data.py` to make this process easier.
 
@@ -50,19 +50,37 @@ This repository comes supplied with the default YOLOv5 small model, trained on 8
 
 3. Train your model. A CUDA-enabled machine is highly encouraged for this step. A training script will look something like this:
     ```bash
-    python train.py --weights yolov5s.pt --cfg yolov5s.yaml --data data.yaml --img 1280 --rect --epochs 1000 --batch-size 32 --device 0 --optimizer AdamW
+    python train.py \
+    --weights yolov5s.pt \
+    --cfg yolov5s.yaml \
+    --data data.yaml \
+    --epochs 1000 \
+    --batch-size 16 \
+    --optimizer AdamW \
+    --device 0
     ```
 
-4. After training, export your model as ONNX. Set the `--opset` to 15 for Jetson Nano compatability. If you want a pretrained YOLOv5 model, simply add the model name to `--weights` (e.g. `--weights yolov5s.pt`).
+4. After training, export your model as ONNX. Set the `--opset` to 15 for Jetson Nano compatability. If you want a pretrained YOLOv5 model, simply add the model name to `--weights` (e.g. `--weights yolov5s.pt`). The `--half` flg with convert model parameters that are float32 to float16, reducing model size and increasing inference speed.
     ```bash
-    python export.py --include onnx --weights best.pt --simplify --half --device 0 --opset 15
+    python export.py \
+    --include onnx \
+    --weights best.pt \
+    --half \
+    --opset 15 \
+    --device 0
     ```
 
 5. Copy your ONNX model to your Jetson Nano.
 
-6. Convert your model to TensorRT. TensorRT model are specific to the machine you convert it on. If you are inferencing your model on a Jetson Nano you have create the TensorRT model on your Jetson Nano. Luckily, the software needed is built-in to the Jetson.
+6. Convert your model to TensorRT. TensorRT model are specific to the machine you convert it on. If you are inferencing your model on a Jetson Nano you have create the TensorRT model on your Jetson Nano. Luckily, the software needed is built-in to the Jetson. If you did not use the `--half` flag in step 4, leave off the flags `--fp16` and after.
     ```bash
-    /usr/src/tensorrt/bin/trtexec --onnx=./path/to/model.onnx --saveEngine=./path/to/save/model.plan --fp16
+    /usr/src/tensorrt/bin/trtexec \
+    --onnx=./path/to/model.onnx \
+    --saveEngine=./path/to/save/model.plan \
+    --explicitBatch \
+    --fp16 \
+    --inputIOFormats=fp16:chw \
+    --outputIOFormats=fp16:chw
     ```
 
 7. Move the model to the correct location, `holly-stream/triton/object_detection/1/model.plan`.
@@ -95,7 +113,7 @@ You have two options for reading in this stream (client):
 1. [Media player (VLC, Windows Media Player, etc.)](#watching-stream-through-streaming-software)
 2. [Web page via Nginx/HLS.](#watching-stream-through-web-browser)
 
-Pick any of the previous three options and follow the instructions below to deploy. If you are new to object detection I recommend you stick to the default model provided. Otherwise, you can supply your own YOLOv5 model.
+Pick an option from each list and follow the instructions below to deploy. If you are new to object detection I recommend you stick to the default model provided. Otherwise, you can supply your own YOLOv5 model.
 
 ---
 
@@ -108,9 +126,9 @@ Here is a list of all possible arguments:
 ```bash
 OBJECT_DETECTION=True
 TRITON_URL=grpc://localhost:8001
-MODEL=yolov5n
-MODEL_DIMS=(640, 640)
+MODEL=yolov5m
 CLASSES=[0, 16]
+MODEL_DIMS=(640, 640)
 CONFIDENCE_THRESHOLD=0.3
 IOU_THRESHOLD=0.25
 
@@ -122,21 +140,22 @@ STREAM_KEY=stream
 CAMERA_INDEX=0
 CAMERA_WIDTH=1280
 CAMERA_HEIGHT=720
-CAMERA_FPS=18
+CAMERA_FPS=22
 ```
 
 A few comments about the parameters:
 - The `OBJECT_DETECTION` variable is a boolean to turn that tasks on/off. If you turn it off you simply have a live stream feed.
 - You can use any custom trained YOLOv5 model for the `MODEL` parameter.
-- `MODEL_DIMS` must match the model dimensions for the model supplied.
 - The `CLASSES` variable takes in a list. If you wish to include all possible classes, remove it from the `.env` file. The possible classes for the default model are [listed below](#change-the-default-class-predictor).
+- `MODEL_DIMS` must match the model dimensions for the model supplied.
+- The `CONFIDENCE_THRESHOLD` and `IOU_THRESHOLD` arguments are used in non-maximum supression in the postprocess model.
 - All arguments accept the data type present above. `STREAM_IP` takes a string, `STREAM_PORT` takes an integer, `STREAM_APPLICATION` takes a string, etc.
 
 
 The application is ready to launch, so pick the method for receiving the stream:
 
 1. If you are watching the stream on the same device set the `STREAM_IP` to `127.0.0.1`, or whatever localhost address you want.
-2. If you are streaming the feed to another device on your local network, set the `STREAM_IP` to the IPV4 address of that device. To find the IP address of a device on linux machine run `ip a` and look for it under `wl01` or something similar. On a windows machine open Windows Powershell and run `ipconfig` and look for `IP address`. On a Windows machine you will most likely need to expose a port (1935 is default) in order to receive the stream. Do this by adding an [Inbound Rule](https://www.tomshardware.com/news/how-to-open-firewall-ports-in-windows-10,36451.html).
+2. If you are streaming the feed to another device on your local network, set the `STREAM_IP` to the IPV4 address of that device. To find the IP address of a device on Linux machine run `ip a` and look for it under `wl01` or something similar. If your Linux machine is running a firewall (e.g. ufw), set an allow rule for port 1935: `sudo ufw allow 1935`. On a windows machine open Windows Powershell and run `ipconfig` and look for `IP address`. On a Windows machine you will most likely need to expose a port (1935 is default) in order to receive the stream. Do this by adding an [Inbound Rule](https://www.tomshardware.com/news/how-to-open-firewall-ports-in-windows-10,36451.html).
 3. If you are streaming the feed to another server set the `STREAM_IP` to the public IP address for that server. Also make sure you expose port 1935 on the firewall and router if necessary for the server your sending the stream to.
 
 Lastly, to receive the stream on the device you picked above you have two options:

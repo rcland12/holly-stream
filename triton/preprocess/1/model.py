@@ -104,7 +104,7 @@ class TritonPythonModel:
                         )
                     ]
                 )
-            )              
+            )
           
         return responses
 

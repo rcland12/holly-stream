@@ -73,6 +73,7 @@ def non_max_suppression(
         scale=True,
         normalize=True
 ):
+    prediction = torch.tensor(np.float32(prediction))
     bs = prediction.shape[0]
     xc = prediction[..., 4] > conf_thres
 
@@ -143,28 +144,26 @@ class TritonPythonModel:
         parser.add_arg("MODEL_DIMS", default=(640, 640), type=tuple)
         parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
         parser.add_arg("IOU_THRESHOLD", default=0.25, type=float)
+        parser.add_arg("SANTA_HAT", default=False, type=bool)
         args = parser.parse_args()
 
         self.classes = args.CLASSES
         self.model_dims = args.MODEL_DIMS
         self.conf_thres = args.CONFIDENCE_THRESHOLD
         self.iou_thres = args.IOU_THRESHOLD
+        self.santa_hat = args.SANTA_HAT
  
     def execute(self, requests):
         responses = []
         for request in requests:
             results = non_max_suppression(
-                torch.tensor(
-                    np.float32(
-                        pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy()
-                    )
-                ),
+                pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy(),
                 pb_utils.get_input_tensor_by_name(request, "INPUT_1").as_numpy(),
                 img1_shape=self.model_dims,
                 conf_thres=self.conf_thres,
                 iou_thres=self.iou_thres,
                 classes=self.classes,
-                normalize=False
+                normalize=self.santa_hat
             )
 
             responses.append(
