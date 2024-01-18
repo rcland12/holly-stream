@@ -109,4 +109,4 @@ ENV LD_LIBRARY_PATH=/tritonserver/backends/python:$LD_LIBRARY_PATH
 ENV LD_LIBRARY_PATH=/tritonserver/backends/tensorrt:$LD_LIBRARY_PATH
 ENV PATH=$PATH:/tritonserver/bin
 
-CMD ["tritonserver", "--backend-directory", "/tritonserver/backends", "--model-repository", "${MODEL_REPO}/${MODEL_NAME}"]
+CMD ["tritonserver", "--backend-directory", "/tritonserver/backends", "--model-repository", "/root/app/triton"]
