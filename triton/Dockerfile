@@ -1,33 +1,3 @@
-# FROM nvcr.io/nvidia/l4t-ml:r32.7.1-py3
-# ARG APPDIR="/root/app"
-# ARG BUILDDIR="/root/build"
-
-# RUN sh -c "echo '/usr/local/cuda/lib64' >> /etc/ld.so.conf.d/nvidia-tegra.conf" \
-#     && ldconfig \
-#     && apt-get update \
-#     && apt-get install -y --no-install-recommends \
-#     git cmake curl unzip pkg-config libpng-dev libtiff-dev \
-#     libavcodec-dev libavformat-dev libswscale-dev \
-#     libgtk2.0-dev libcanberra-gtk* \
-#     python3-dev python3-numpy python3-pip \
-#     libxvidcore-dev libx264-dev libgtk-3-dev \
-#     libtbb2 libtbb-dev libdc1394-22-dev \
-#     libv4l-dev v4l-utils \
-#     libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-#     libavresample-dev libvorbis-dev libxine2-dev \
-#     libfaac-dev libmp3lame-dev libtheora-dev \
-#     libopencore-amrnb-dev libopencore-amrwb-dev \
-#     libopenblas-dev libatlas-base-dev libblas-dev libopenblas-base \
-#     liblapack-dev libeigen3-dev gfortran \
-#     libhdf5-dev protobuf-compiler \
-#     libprotobuf-dev libgoogle-glog-dev libgflags-dev \
-#     libopenmpi-dev libomp-dev ffmpeg \
-#     libjpeg-dev zlib1g-dev libpython3-dev libfreetype6-dev \
-#     software-properties-common autoconf automake build-essential \
-#     libb64-dev libre2-dev libssl-dev libtool libboost-dev \
-#     libcurl4-openssl-dev rapidjson-dev patchelf \
-#     && rm -rf /var/lib/apt/lists/* \
-#     && apt-get update
 FROM nvcr.io/nvidia/l4t-base:r32.7.1
 ARG APPDIR="/root/app"
 ARG BUILDDIR="/root/build"
