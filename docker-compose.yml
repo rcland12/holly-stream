@@ -1,20 +1,38 @@
 version: "3"
 
 services:
-  linux-stream:
-    image: rcland12/detection-stream:bullseye-latest
+  triton:
+    image: rcland12/detection-stream:triton-latest
     build:
-      context: ./
-      dockerfile: Dockerfile.linux
-    network_mode: "host"
-    devices:
-      - "/dev/video0:/dev/video0"
+      context: ./triton
+    network_mode: host
+    shm_size: 128mb
     volumes:
-      - "${PWD}/weights:/root/app/weights"
-    tty: true
-    stdin_open: true
-    env_file:
-      - ${PWD}/.env
+      - ./triton:/root/app/triton
+    env_file: .env
+    runtime: nvidia
+    healthcheck:
+      test: [ "CMD", "curl", "-i", "-X", "GET", "http://localhost:8000/v2/health/ready" ]
+      interval: 10s
+      timeout: 20s
+      retries: 6
+
+  app:
+    image: rcland12/detection-stream:linux-latest
+    build:
+      context: ./app
+    network_mode: host
+    devices:
+      - /dev/video0:/dev/video0
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /tmp/argus_socket:/tmp/argus_socket
+      - ./triton:/root/app/triton
+    env_file: .env
+    depends_on:
+      triton:
+        condition: service_healthy
+    restart: unless-stopped
   
   nginx-stream:
     image: rcland12/detection-stream:nginx-latest
@@ -34,3 +52,64 @@ services:
     volumes:
       - "${PWD}/nginx/nginx-web/nginx.conf:/etc/nginx/nginx.conf"
       - "${PWD}/nginx/stream:/var/www/html/stream"
+
+version: "3"
+
+
+services:
+  triton:
+    image: rcland12/detection-stream:triton-latest
+    build:
+      context: ./triton
+    shm_size: 128mb
+    volumes:
+      - ./triton:/root/app/triton
+    network_mode: host
+    env_file: .env
+    runtime: nvidia
+    healthcheck:
+      test: [ "CMD", "curl", "-i", "-X", "GET", "http://localhost:8000/v2/health/ready" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  jetson-stream:
+    image: rcland12/detection-stream:jetson-latest
+    build:
+      context: ./app
+    devices:
+      - /dev/video0:/dev/video0
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /tmp/argus_socket:/tmp/argus_socket
+      - ./triton:/root/app/triton
+    network_mode: host
+    env_file: .env
+    restart: unless-stopped
+
+  nginx-stream:
+    image: rcland12/detection-stream:nginx-latest
+    build:
+      context: ./nginx
+    network_mode: host
+    volumes:
+      - ./nginx/nginx-stream/nginx.conf:/etc/nginx/nginx.conf
+    healthcheck:
+      test: [ "CMD", "service", "nginx", "status" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  nginx-web:
+    image: rcland12/detection-stream:nginx-latest
+    build:
+      context: ./nginx
+    network_mode: host
+    volumes:
+      - ./nginx/nginx-web/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/stream:/var/www/html/stream
+    healthcheck:
+      test: [ "CMD", "service", "nginx", "status" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
