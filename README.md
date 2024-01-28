@@ -1,5 +1,111 @@
 # Holly Stream
-This application will ingest your computers webcam feed (using ffmpeg), apply an object detection task on the feed with bounding boxes, and send that feed via RTMP to an address of your choice. You have the following options for recording and applying a custom object detection model:
+This application will ingest your computers camera feed, apply an object detection task with bounding boxes, and send that feed via RTMP to an address of your choice. Watch the stream on your computer, another local machine, or an external web server.
+
+# Requirements
+
+* Docker and the compose plugin
+* CUDA-enabled GPU
+* At least 4GB of RAM
+* Webcam, at least 720p recommended
+
+# Prerequisites
+There are a couple of recommended and required steps before you can run this application.
+
+## (required) A YOLOv8 or YOLOv5 model
+This application uses a service called Nvidia Trition Inference Server. It uses a object detection model format called TensorRT. THIS MODEL FORMAT IS MACHINE SPECIFIC. If I trained a YOLOv8 model on a Nvidia GeForce GTX 1060 GPU and convert it, it will not work on another GPU architecture. Therefore, you must convert your own model. If you want to use the default YOLOv8 model, you can simply follow the steps below. Otherwise, the next section will explain how to train a custom model with labels of your choice.
+
+### How to convert a YOLOv8n (nano) model to TensorRT format
+
+1. Set up a python environment.
+
+2. Install YOLOv8 requirements:
+    ```bash
+    pip install ultralytics
+    ```
+
+3. Convert the model to ONNX format in a python script:
+
+    ```python
+    from ultralytics import YOLO
+    model = YOLO('yolov8n.pt')
+    model.export(
+        format='onnx',   # export to ONNX
+        half=True,       # FP16 quantization
+        simplify=True    # ONNX model simplification
+    )
+    ```
+    This model should save to `weights/yolov8n.onnx`.
+
+4. Launch the Nvidia TensorRT container and convert the model:
+
+    ```bash
+    docker run -it --rm --gpus all -v ./weights:/models nvcr.io/nvidia/tensorrt:23.12-py3 \
+    trtexec --onnx=/models/yolov8n.onnx --saveEngine=/models/model.plan --fp16 --inputIOFormats=fp16:chw --outputIOFormats=fp16:chw
+    ```
+    This process should take a couple minutes.
+
+5. Move the TensorRT model (`weights/model.plan`) to the triton directory:
+
+    ```bash
+    mv weights/model.plan triton/object_detection/1/
+    ```
+
+Triton should now be ready.
+
+## (optional) Train a custom YOLOv5 model
+This repository comes supplied with the default YOLOv5 medium model, trained on 80 [classes](#change-the-default-class-predictor). It is already in TensorRT format (`model.plan`) optimzed to run on Jetson Nano architecture. However, you can train your own custom model using the [YOLOv5 repo](https://github.com/ultralytics/yolov5). Follow these steps if you want to train a model from scratch. It is highly recommended to use a CUDA-enabled machine for training. If you already have a trained model in PyTorch format (`.pt`) skip to step 4.
+
+1. Gather data. Collect images of the object(s) you want to detect. I created a script at `app/collect_data.py` to make this process easier.
+
+2. Annotate your data in YOLO format. I highly recommend [Roboflow](https://roboflow.com/) for this and using a 70/30 split between your training and validation data.
+
+3. Train your model. A CUDA-enabled machine is highly encouraged for this step. A training script will look something like this:
+    ```bash
+    python train.py \
+    --weights yolov5s.pt \
+    --cfg yolov5s.yaml \
+    --data data.yaml \
+    --epochs 1000 \
+    --batch-size 16 \
+    --optimizer AdamW \
+    --device 0
+    ```
+
+4. After training, export your model as ONNX. Set the `--opset` to 15 for Jetson Nano compatability. If you want a pretrained YOLOv5 model, simply add the model name to `--weights` (e.g. `--weights yolov5s.pt`). The `--half` flg with convert model parameters that are float32 to float16, reducing model size and increasing inference speed.
+    ```bash
+    python export.py \
+    --include onnx \
+    --weights best.pt \
+    --half \
+    --opset 15 \
+    --device 0
+    ```
+
+5. Copy your ONNX model to your Jetson Nano.
+
+6. Convert your model to TensorRT. TensorRT model are specific to the machine you convert it on. If you are inferencing your model on a Jetson Nano you have create the TensorRT model on your Jetson Nano. Luckily, the software needed is built-in to the Jetson. If you did not use the `--half` flag in step 4, leave off the flags `--fp16` and after.
+    ```bash
+    /usr/src/tensorrt/bin/trtexec \
+    --onnx=./path/to/model.onnx \
+    --saveEngine=./path/to/save/model.plan \
+    --explicitBatch \
+    --fp16 \
+    --inputIOFormats=fp16:chw \
+    --outputIOFormats=fp16:chw
+    ```
+
+7. Move the model to the correct location, `holly-stream/triton/object_detection/1/model.plan`.
+
+# Installation
+
+Pull the docker images:
+```bash
+docker pull rcland12/detection-stream:linux-latest
+docker pull rcland12/detection-stream:linux-triton-latest
+```
+
+# Deployment
+You have the following options for serving this feed:
 
 1. [Record a webcam feed from a Jetson Nano architecture.](#deploying-on-jetson-nano)
 2. [Record a webcam feed from a Linux machine.](#deploying-on-a-linux-machine)
@@ -17,25 +123,6 @@ Lastly, you have two options for reading in this stream (client):
 
 Pick any of the previous three options and follow the instructions below to deploy. If you are new to object detection I recommend you stick to the default model provided. Otherwise, you can supply your own YOLOv5 or YOLOv8 model.
 
-### Requirements:
-- Linux machine with a webcam and GPU (optional) OR Nvidia Jetson Nano SDK (JetPack 4.6) with camera attached.
-- Docker and the compose plugin (instructions for installing compose plugin on Jetson Nano [here](#installing-the-docker-compose-plugin-on-jetson-nano))
-
-### Installing the docker-compose plugin on Jetson Nano
-Install using the following command:
-
-```bash
-pip3 install --upgrade pip
-pip3 install docker-compose==1.27.4
-```
-
-Check if it was installed correctly:
-
-```bash
-docker-compose version
-```
-
-# Deployment
 
 ## Deploying on Jetson Nano
 
@@ -49,8 +136,12 @@ Here is a list of all possible arguments:
 
 ```bash
 OBJECT_DETECTION=True
-MODEL=weights/yolov5n.pt
+TRITON_URL=grpc://localhost:8001
+MODEL_NAME=yolov8n
+MODEL_DIMS=(640, 640)
 CLASSES=[0, 16]
+CONFIDENCE_THRESHOLD=0.3
+IOU_THRESHOLD=0.25
 
 STREAM_IP=127.0.0.1
 STREAM_PORT=1935
@@ -58,9 +149,9 @@ STREAM_APPLICATION=live
 STREAM_KEY=stream
 
 CAMERA_INDEX=0
-CAMERA_WIDTH=640
-CAMERA_HEIGHT=480
-CAMERA_FPS=30
+CAMERA_WIDTH=1280
+CAMERA_HEIGHT=720
+SANTA_HAT_PLUGIN=False
 ```
 
 A few comments about the parameters:
