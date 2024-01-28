@@ -104,9 +104,9 @@ class TritonPythonModel:
                         )
                     ]
                 )
-            )              
+            )
           
         return responses
 
     def finalize(self):
-        print('Cleaning up...')
+        print('Cleaning up preprocess model...')
