@@ -220,17 +220,17 @@ class Annotator():
 
 
 def main(
-        object_detection,
-        triton_url,
-        model_name,
-        stream_ip,
-        stream_port,
-        stream_application,
-        stream_key,
-        camera_index,
-        camera_width,
-        camera_height
-    ):
+    object_detection,
+    triton_url,
+    model_name,
+    stream_ip,
+    stream_port,
+    stream_application,
+    stream_key,
+    camera_index,
+    camera_width,
+    camera_height
+):
 
     rtmp_url = "rtmp://{}:{}/{}/{}".format(
         stream_ip,
@@ -313,7 +313,7 @@ if __name__ == "__main__":
     parser = EnvArgumentParser()
     parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
     parser.add_arg("TRITON_URL", default="grpc://localhost:8001", type=str)
-    parser.add_arg("MODEL", default="yolov5n", type=str)
+    parser.add_arg("MODEL_NAME", default="yolov8n", type=str)
     parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
     parser.add_arg("STREAM_PORT", default=1935, type=int)
     parser.add_arg("STREAM_APPLICATION", default="live", type=str)
@@ -326,7 +326,7 @@ if __name__ == "__main__":
     main(
         args.OBJECT_DETECTION,
         args.TRITON_URL,
-        args.MODEL,
+        args.MODEL_NAME,
         args.STREAM_IP,
         args.STREAM_PORT,
         args.STREAM_APPLICATION,

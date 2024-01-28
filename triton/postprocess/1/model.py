@@ -61,17 +61,18 @@ def xywh2xyxy(x):
 
 def non_max_suppression(
     prediction,
+    img0_shape=(640, 480),
+    img1_shape=(640, 640),
     conf_thres=0.25,
     iou_thres=0.45,
     classes=None,
-    agnostic=False,
     multi_label=False,
     labels=(),
     max_det=300,
     nc=0,
-    max_time_img=0.05,
     max_nms=30000,
-    max_wh=7680
+    max_wh=7680,
+    scale=True
 ):
     assert 0 <= conf_thres <= 1, f"Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0"
     assert 0 <= iou_thres <= 1, f"Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0"
@@ -84,13 +85,11 @@ def non_max_suppression(
     mi = 4 + nc
     xc = prediction[:, 4:mi].amax(1) > conf_thres
 
-    time_limit = 2.0 + max_time_img * bs
     multi_label &= nc > 1
 
     prediction = prediction.transpose(-1, -2)
     prediction[..., :4] = xywh2xyxy(prediction[..., :4])
 
-    t = time.time()
     output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
     for xi, x in enumerate(prediction):
         x = x[xc[xi]]
@@ -123,7 +122,7 @@ def non_max_suppression(
         if n > max_nms:
             x = x[x[:, 4].argsort(descending=True)[:max_nms]]
 
-        c = x[:, 5:6] * (0 if agnostic else max_wh)
+        c = x[:, 5:6] * max_wh
         scores = x[:, 4]
 
         boxes = x[:, :4] + c
@@ -131,10 +130,23 @@ def non_max_suppression(
         i = i[:max_det]
 
         output[xi] = x[i]
-        if (time.time() - t) > time_limit:
-            break
 
-    return output
+    output = output[0]
+
+    if scale:
+        gain = min(img1_shape[0] / img0_shape[1], img1_shape[1] / img0_shape[0])
+        pad = (img1_shape[1] - img0_shape[0] * gain) / 2, (img1_shape[0] - img0_shape[1] * gain) / 2
+
+        output[:, [0, 2]] -= pad[0]
+        output[:, [1, 3]] -= pad[1]
+        output[:, :4] /= gain
+
+        output[..., 0].clamp_(0, img0_shape[0])
+        output[..., 1].clamp_(0, img0_shape[1])
+        output[..., 2].clamp_(0, img0_shape[0])
+        output[..., 3].clamp_(0, img0_shape[1])
+
+    return output.numpy()
 
 
 
@@ -142,22 +154,28 @@ class TritonPythonModel:
     def initialize(self, args):
         load_dotenv()
         parser = EnvArgumentParser()
-        parser.add_arg("CLASSES", default=None, type=list)
+        parser.add_arg("CAMERA_WIDTH", default=640, type=int)
+        parser.add_arg("CAMERA_HEIGHT", default=480, type=int)
         parser.add_arg("MODEL_DIMS", default=(640, 640), type=tuple)
         parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
         parser.add_arg("IOU_THRESHOLD", default=0.25, type=float)
+        parser.add_arg("CLASSES", default=None, type=list)
         args = parser.parse_args()
 
-        self.classes = args.CLASSES
+        self.camera_width = args.CAMERA_WIDTH
+        self.camera_height = args.CAMERA_HEIGHT
         self.model_dims = args.MODEL_DIMS
         self.conf_thres = args.CONFIDENCE_THRESHOLD
         self.iou_thres = args.IOU_THRESHOLD
+        self.classes = args.CLASSES
  
     def execute(self, requests):
         responses = []
         for request in requests:
             results = non_max_suppression(
-                from_dlpack(pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_dlpack()),
+                from_dlpack(pb_utils.get_input_tensor_by_name(request, "INPUT_0").to_dlpack()),
+                img0_shape=(self.camera_width, self.camera_height),
+                img1_shape=self.model_dims,
                 conf_thres=self.conf_thres,
                 iou_thres=self.iou_thres,
                 classes=self.classes
@@ -175,46 +193,3 @@ class TritonPythonModel:
 
     def finalize(self):
         print('Cleaning up postprocess model...')
-
-
-# model_warmup [
-#   {
-#     name : "postprocess model warmup"
-#     batch_size: 1
-#     inputs {
-#       key: "INPUT_0"
-#       value: {
-#           data_type: TYPE_FP16
-#           dims: 1
-#           dims: 25200
-#           dims: 85
-#           input_data_file: "INPUT_0"
-#       }
-#     }
-#     inputs {
-#       key: "INPUT_1"
-#       value: {
-#           data_type: TYPE_INT16
-#           dims: 2
-#           input_data_file: "INPUT_1"
-#       }
-#     }
-#   }
-# ]
-
-
-# model_warmup [{
-#     name : "object detection model warmup"
-#     batch_size: 1
-#     inputs {
-#       key: "images"
-#       value: {
-#         data_type: TYPE_FP16
-#         dims: 1
-#         dims: 3
-#         dims: 640
-#         dims: 640
-#         input_data_file: "images"
-#       }
-#     }
-# }]
