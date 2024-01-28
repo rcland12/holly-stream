@@ -119,8 +119,6 @@ class ObjectDetection():
     def __init__(
             self,
             model_name,
-            camera_width,
-            camera_height,
             triton_url
         ):
  
@@ -129,12 +127,9 @@ class ObjectDetection():
         except ConnectionError as e:
             raise f"Failed to connect to Triton: {e}"
 
-        self.frame_dims = [camera_width, camera_height]
-
     def __call__(self, frame):
         predictions = self.model(
-            frame,
-            numpy.array(self.frame_dims, dtype='int16')
+            frame
         ).tolist()
 
         bboxes = [item[:4] for item in predictions]
@@ -145,38 +140,45 @@ class ObjectDetection():
 
 
 class Annotator():
-    def __init__(self, classes, width=1280, height=720):
-        self.classes = classes
+    def __init__(self, classes, width=1280, height=720, santa_hat_plugin_bool=False):
         self.width = width
         self.height = height
+        self.classes = classes
         self.colors = list(numpy.random.rand(len(self.classes), 3) * 255)
         self.santa_hat = cv2.imread("images/santa_hat.png")
         self.santa_hat_mask = cv2.imread("images/santa_hat_mask.png")
+        self.santa_hat_plugin_bool = santa_hat_plugin_bool
 
     def __call__(self, frame, bboxes, confs, indexes):
-        for i in range(len(bboxes)):
-            xmin, ymin, xmax, ymax = [int(j) for j in bboxes[i]]
-            color = self.colors[indexes[i]]
-            frame = cv2.rectangle(
-                img=frame,
-                pt1=(xmin, ymin),
-                pt2=(xmax, ymax),
-                color=color,
-                thickness=2
-            )
+        if not self.santa_hat_plugin_bool:
+            for i in range(len(bboxes)):
+                xmin, ymin, xmax, ymax = [int(j) for j in bboxes[i]]
+                color = self.colors[indexes[i]]
+                frame = cv2.rectangle(
+                    img=frame,
+                    pt1=(xmin, ymin),
+                    pt2=(xmax, ymax),
+                    color=color,
+                    thickness=2
+                )
 
-            frame = cv2.putText(
-                img=frame,
-                text=f'{self.classes[indexes[i]]} ({str(confs[i])})',
-                org=(xmin, ymin),
-                fontFace=cv2.FONT_HERSHEY_PLAIN,
-                fontScale=0.75,
-                color=color,
-                thickness=1,
-                lineType=cv2.LINE_AA
-            )
+                frame = cv2.putText(
+                    img=frame,
+                    text=f'{self.classes[indexes[i]]} ({str(confs[i])})',
+                    org=(xmin, ymin - 5),
+                    fontFace=cv2.FONT_HERSHEY_PLAIN,
+                    fontScale=0.75,
+                    color=color,
+                    thickness=1,
+                    lineType=cv2.LINE_AA
+                )
 
-        return frame
+            return frame
+
+        else:
+            # For santa hat plugin, turn Normalize to True in nms function
+            max_index = max(range(len(confs)), key=confs.__getitem__)
+            return self._overlay_obj(frame, bboxes[max_index].copy())
 
     def _overlay_obj(self, frame, bbox):
         bbox = [int(i * scalar) for i, scalar in zip(bbox, [self.width, self.height, self.width, self.height])]
@@ -212,11 +214,6 @@ class Annotator():
         
         return frame
 
-    def santa_hat_plugin(self, frame, bboxes, confs):
-        # For santa hat plugin, turn Normalize to True in nms function
-        max_index = max(range(len(confs)), key=confs.__getitem__)
-        return self._overlay_obj(frame, bboxes[max_index].copy())
-
 
 
 def main(
@@ -229,7 +226,8 @@ def main(
     stream_key,
     camera_index,
     camera_width,
-    camera_height
+    camera_height,
+    santa_hat_plugin
 ):
 
     rtmp_url = "rtmp://{}:{}/{}/{}".format(
@@ -265,18 +263,17 @@ def main(
     if object_detection:
         model = ObjectDetection(
             model_name=model_name,
-            camera_width=camera_width,
-            camera_height=camera_height,
             triton_url=triton_url
         )
 
         annotator = Annotator(
             model.model.classes,
             camera_width,
-            camera_height
+            camera_height,
+            santa_hat_plugin
         )
 
-        period = 3
+        period = 2
         tracking_index = 0
 
         while camera.isOpened():
@@ -321,6 +318,7 @@ if __name__ == "__main__":
     parser.add_arg("CAMERA_INDEX", default=0, type=int)
     parser.add_arg("CAMERA_WIDTH", default=640, type=int)
     parser.add_arg("CAMERA_HEIGHT", default=480, type=int)
+    parser.add_arg("SANTA_HAT_PLUGIN", default=False, type=bool)
     args = parser.parse_args()
 
     main(
@@ -333,5 +331,6 @@ if __name__ == "__main__":
         args.STREAM_KEY,
         args.CAMERA_INDEX,
         args.CAMERA_WIDTH,
-        args.CAMERA_HEIGHT
+        args.CAMERA_HEIGHT,
+        args.SANTA_HAT_PLUGIN
     )

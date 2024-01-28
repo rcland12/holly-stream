@@ -49,13 +49,13 @@ class EnvArgumentParser():
 
 def xywh2xyxy(x):
     assert x.shape[-1] == 4, f"input shape last dimension expected 4 but input shape is {x.shape}"
-    y = torch.empty_like(x) if isinstance(x, torch.Tensor) else np.empty_like(x)  # faster than clone/copy
-    dw = x[..., 2] / 2  # half-width
-    dh = x[..., 3] / 2  # half-height
-    y[..., 0] = x[..., 0] - dw  # top left x
-    y[..., 1] = x[..., 1] - dh  # top left y
-    y[..., 2] = x[..., 0] + dw  # bottom right x
-    y[..., 3] = x[..., 1] + dh  # bottom right y
+    y = torch.empty_like(x) if isinstance(x, torch.Tensor) else np.empty_like(x)
+    dw = x[..., 2] / 2
+    dh = x[..., 3] / 2
+    y[..., 0] = x[..., 0] - dw
+    y[..., 1] = x[..., 1] - dh
+    y[..., 2] = x[..., 0] + dw
+    y[..., 3] = x[..., 1] + dh
     return y
 
 
@@ -72,7 +72,8 @@ def non_max_suppression(
     nc=0,
     max_nms=30000,
     max_wh=7680,
-    scale=True
+    scale=True,
+    normalize=False
 ):
     assert 0 <= conf_thres <= 1, f"Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0"
     assert 0 <= iou_thres <= 1, f"Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0"
@@ -146,6 +147,12 @@ def non_max_suppression(
         output[..., 2].clamp_(0, img0_shape[0])
         output[..., 3].clamp_(0, img0_shape[1])
 
+    if normalize:
+        output[..., :4] = torch.mm(
+            output[..., :4],
+            torch.diag(torch.Tensor([1/img0_shape[0], 1/img0_shape[1], 1/img0_shape[0], 1/img0_shape[1]]))
+        )
+
     return output.numpy()
 
 
@@ -160,6 +167,7 @@ class TritonPythonModel:
         parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
         parser.add_arg("IOU_THRESHOLD", default=0.25, type=float)
         parser.add_arg("CLASSES", default=None, type=list)
+        parser.add_arg("SANTA_HAT_PLUGIN", default=False, type=bool)
         args = parser.parse_args()
 
         self.camera_width = args.CAMERA_WIDTH
@@ -168,6 +176,7 @@ class TritonPythonModel:
         self.conf_thres = args.CONFIDENCE_THRESHOLD
         self.iou_thres = args.IOU_THRESHOLD
         self.classes = args.CLASSES
+        self.santa_hat_plugin = args.SANTA_HAT_PLUGIN
  
     def execute(self, requests):
         responses = []
@@ -178,17 +187,18 @@ class TritonPythonModel:
                 img1_shape=self.model_dims,
                 conf_thres=self.conf_thres,
                 iou_thres=self.iou_thres,
-                classes=self.classes
+                classes=self.classes,
+                normalize=self.santa_hat_plugin
             )
 
             responses.append(
                 pb_utils.InferenceResponse(
                     output_tensors=[
-                        pb_utils.Tensor("OUTPUT_0", results),
+                        pb_utils.Tensor("OUTPUT_0", results)
                     ]
                 )
             )
-          
+
         return responses
 
     def finalize(self):
