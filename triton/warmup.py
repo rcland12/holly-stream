@@ -107,9 +107,3 @@ if __name__ == "__main__":
         np_array=img[None],
         dtype='float16'
     )
-
-    # postprocess
-    create_warmup_file(
-        "./postprocess/warmup/INPUT_1",
-        np_array=np.array([1280, 720], dtype='int16')
-    )
