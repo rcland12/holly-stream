@@ -44,54 +44,54 @@ class EnvArgumentParser():
     def parse_args(self):
         return self._define_dict(self.dict)
 
+
 def letterbox(
-    im,
+    image=None,
     new_shape=(640, 640),
-    color=(114, 114, 114),
-    auto=True,
-    stride=32,
-    out_type='float32'
+    output_type='float32'
 ):
-    shape = im.shape[:2]
+    shape = image.shape[:2]
     r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
 
     new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
     dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]
-
-    if auto:
-        dw, dh = numpy.mod(dw, stride), numpy.mod(dh, stride)
     
     dw /= 2
     dh /= 2
     
     if shape[::-1] != new_unpad:
-        im = cv2.resize(im, new_unpad, interpolation=cv2.INTER_LINEAR)
+        image = cv2.resize(image, new_unpad, interpolation=cv2.INTER_LINEAR)
 
     top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
-    im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
+    image = cv2.copyMakeBorder(
+        image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114)
+    )
 
-    return im.transpose((2, 0, 1))[::-1].astype(out_type)
+    return image.transpose((2, 0, 1))[::-1].astype(output_type)
 
 
 
 class TritonPythonModel:
     def initialize(self, args):
+        model_config = json.loads(args["model_config"])
+        OUTPUT_0_config = pb_utils.get_output_config_by_name(model_config, "OUTPUT_0")
+
         load_dotenv()
         parser = EnvArgumentParser()
         parser.add_arg("MODEL_DIMS", default=(640, 640), type=tuple)
         args = parser.parse_args()
 
         self.model_dims = args.MODEL_DIMS
+        self.output_type = pb_utils.triton_string_to_numpy(OUTPUT_0_config["data_type"])
 
     def execute(self, requests):
         responses = []
         for request in requests:
             img = letterbox(
-                pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy(),
-                self.model_dims,
-                auto=False,
-                out_type="float16"
+                image=pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy(),
+                new_shape=self.model_dims,
+                output_type=self.output_type
             )
             img /= 255
 

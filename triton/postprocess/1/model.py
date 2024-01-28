@@ -1,6 +1,7 @@
 import os
 import torch
 import numpy as np
+from torch.utils.dlpack import from_dlpack
 import triton_python_backend_utils as pb_utils
 
 from ast import literal_eval
@@ -71,9 +72,8 @@ def non_max_suppression(
         max_det=300,
         max_nms=30000,
         scale=True,
-        normalize=True
+        normalize=False
 ):
-    prediction = torch.tensor(np.float32(prediction))
     bs = prediction.shape[0]
     xc = prediction[..., 4] > conf_thres
 
@@ -115,24 +115,26 @@ def non_max_suppression(
 
         output[xi] = x[i]
 
-    for tensor in output:
-        if scale:
-            gain = min(img1_shape[0] / img0_shape[1], img1_shape[1] / img0_shape[0])
-            pad = (img1_shape[1] - img0_shape[0] * gain) / 2, (img1_shape[0] - img0_shape[1] * gain) / 2
+    output = output[0]
 
-            tensor[:, [0, 2]] -= pad[0]
-            tensor[:, [1, 3]] -= pad[1]
-            tensor[:, :4] /= gain
+    if scale:
+        gain = min(img1_shape[0] / img0_shape[1], img1_shape[1] / img0_shape[0])
+        pad = (img1_shape[1] - img0_shape[0] * gain) / 2, (img1_shape[0] - img0_shape[1] * gain) / 2
 
-            tensor[..., [0, 2]] = tensor[..., [0, 2]].clip(0, img0_shape[0])
-            tensor[..., [1, 3]] = tensor[..., [1, 3]].clip(0, img0_shape[1])
+        output[:, [0, 2]] -= pad[0]
+        output[:, [1, 3]] -= pad[1]
+        output[:, :4] /= gain
 
-        if normalize:
-            tensor[:, :4] = tensor[:, :4] @ np.diag([1/img0_shape[0], 1/img0_shape[1], 1/img0_shape[0], 1/img0_shape[1]])
+        output[..., [0, 2]] = output[..., [0, 2]].clip(0, img0_shape[0])
+        output[..., [1, 3]] = output[..., [1, 3]].clip(0, img0_shape[1])
 
-        tensor = tensor.numpy()
+    if normalize:
+        output[..., :4] = torch.mm(
+            output[..., :4],
+            torch.diag(torch.Tensor([1/img0_shape[0], 1/img0_shape[1], 1/img0_shape[0], 1/img0_shape[1]]))
+        )
 
-    return np.concatenate(output, axis=0)
+    return output.numpy()_
 
 
 
@@ -140,40 +142,44 @@ class TritonPythonModel:
     def initialize(self, args):
         load_dotenv()
         parser = EnvArgumentParser()
-        parser.add_arg("CLASSES", default=None, type=list)
+        parser.add_arg("CAMERA_WIDTH", default=640, type=int)
+        parser.add_arg("CAMERA_HEIGHT", default=480, type=int)
         parser.add_arg("MODEL_DIMS", default=(640, 640), type=tuple)
         parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
         parser.add_arg("IOU_THRESHOLD", default=0.25, type=float)
-        parser.add_arg("SANTA_HAT", default=False, type=bool)
+        parser.add_arg("CLASSES", default=None, type=list)
+        parser.add_arg("SANTA_HAT_PLUGIN", default=False, type=bool)
         args = parser.parse_args()
 
-        self.classes = args.CLASSES
+        self.camera_width = args.CAMERA_WIDTH
+        self.camera_height = args.CAMERA_HEIGHT
         self.model_dims = args.MODEL_DIMS
         self.conf_thres = args.CONFIDENCE_THRESHOLD
         self.iou_thres = args.IOU_THRESHOLD
-        self.santa_hat = args.SANTA_HAT
+        self.classes = args.CLASSES
+        self.santa_hat_plugin = args.SANTA_HAT_PLUGIN
  
     def execute(self, requests):
         responses = []
         for request in requests:
             results = non_max_suppression(
-                pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy(),
-                pb_utils.get_input_tensor_by_name(request, "INPUT_1").as_numpy(),
+                from_dlpack(pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_dlpack()),
+                img0_shape=(self.camera_width, self.camera_height),
                 img1_shape=self.model_dims,
                 conf_thres=self.conf_thres,
                 iou_thres=self.iou_thres,
                 classes=self.classes,
-                normalize=self.santa_hat
+                normalize=self.santa_hat_plugin
             )
 
             responses.append(
                 pb_utils.InferenceResponse(
                     output_tensors=[
-                        pb_utils.Tensor("OUTPUT_0", results),
+                        pb_utils.Tensor("OUTPUT_0", results)
                     ]
                 )
             )
-          
+
         return responses
 
     def finalize(self):

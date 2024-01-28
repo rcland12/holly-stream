@@ -25,9 +25,7 @@ model_warmup [{
       key: "INPUT_0"
       value: {
         data_type: TYPE_UINT8
-        dims: 1280
-        dims: 720
-        dims: 3
+        dims: [ 1280, 720, 3 ]
         input_data_file: "INPUT_0"
       }
     }
