@@ -4,11 +4,6 @@ on:
   push:
     branches: [ jetson ]
 
-env:
-  DOCKERHUB_USERNAME: rcland12
-  DOCKERHUB_REPO: detection-stream
-  NGINX_TAG: nginx-latest
-
 jobs:
   nginx-image:
     runs-on: ubuntu-latest

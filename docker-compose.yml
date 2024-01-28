@@ -2,7 +2,7 @@ version: "3"
 
 services:
   triton:
-    image: rcland12/detection-stream:triton-latest
+    image: rcland12/detection-stream:jetson-triton-latest
     build:
       context: ./triton
     network_mode: host
