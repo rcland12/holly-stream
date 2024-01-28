@@ -46,13 +46,16 @@ class EnvArgumentParser():
     def parse_args(self):
         return self._define_dict(self.dict)
 
+
 def box_area(box):
     return (box[2] - box[0]) * (box[3] - box[1])
+
 
 def box_iou(box1, box2, eps=1e-7):
     (a1, a2), (b1, b2) = box1[:, None].chunk(2, 2), box2.chunk(2, 1)
     inter = (torch.min(a2, b2) - torch.max(a1, b1)).clamp(0).prod(2)
     return inter / (box_area(box1.T)[:, None] + box_area(box2.T) - inter + eps)
+
 
 def xywh2xyxy(x):
     y = x.clone()
@@ -62,6 +65,7 @@ def xywh2xyxy(x):
     y[..., 3] = x[..., 1] + x[..., 3] / 2
     return y
 
+
 def non_max_suppression(
         prediction,
         img0_shape,
@@ -69,15 +73,13 @@ def non_max_suppression(
         conf_thres=0.3,
         iou_thres=0.25,
         classes=None,
-        max_det=300,
-        max_nms=30000,
         scale=True,
         normalize=False
 ):
+    prediction = prediction.float()
     bs = prediction.shape[0]
     xc = prediction[..., 4] > conf_thres
 
-    max_nms = 30000
     redundant = True
     merge = True
 
@@ -99,13 +101,13 @@ def non_max_suppression(
         n = x.shape[0]
         if not n:
             continue
-        elif n > max_nms:
-            x = x[x[:, 4].argsort(descending=True)[:max_nms]]
+        elif n > 30000:
+            x = x[x[:, 4].argsort(descending=True)[:30000]]
 
         boxes, scores = x[:, :4], x[:, 4]
         i = nms(boxes, scores, iou_thres)
-        if i.shape[0] > max_det:
-            i = i[:max_det]
+        if i.shape[0] > 300:
+            i = i[:300]
         if merge and (1 < n < 3E3):
             iou = box_iou(boxes[i], boxes) > iou_thres
             weights = iou * scores[None]
@@ -134,7 +136,7 @@ def non_max_suppression(
             torch.diag(torch.Tensor([1/img0_shape[0], 1/img0_shape[1], 1/img0_shape[0], 1/img0_shape[1]]))
         )
 
-    return output.numpy()_
+    return output.numpy()
 
 
 
@@ -163,7 +165,7 @@ class TritonPythonModel:
         responses = []
         for request in requests:
             results = non_max_suppression(
-                from_dlpack(pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_dlpack()),
+                from_dlpack(pb_utils.get_input_tensor_by_name(request, "INPUT_0").to_dlpack()),
                 img0_shape=(self.camera_width, self.camera_height),
                 img1_shape=self.model_dims,
                 conf_thres=self.conf_thres,

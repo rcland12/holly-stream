@@ -1,10 +1,10 @@
 import os
 import cv2
 import torch
-import numpy
 import typing
 import imutils
 import subprocess
+import numpy as np
 
 from nanocamera import Camera
 from dotenv import load_dotenv
@@ -145,7 +145,7 @@ class Annotator():
         self.width = width
         self.height = height
         self.classes = classes
-        self.colors = list(numpy.random.rand(len(self.classes), 3) * 255)
+        self.colors = list(np.random.rand(len(self.classes), 3) * 255)
         self.santa_hat = cv2.imread("images/santa_hat.png")
         self.santa_hat_mask = cv2.imread("images/santa_hat_mask.png")
         self.santa_hat_plugin_bool = santa_hat_plugin_bool
@@ -191,7 +191,7 @@ class Annotator():
         hat_height, hat_width = santa_hat.shape[0], santa_hat.shape[1]
 
         mask_boolean = santa_hat_mask[:, :, 0] == 0
-        mask_rgb_boolean = numpy.stack([mask_boolean, mask_boolean, mask_boolean], axis=2)
+        mask_rgb_boolean = np.stack([mask_boolean, mask_boolean, mask_boolean], axis=2)
 
         if x >= 0 and y >= 0:
             h = hat_height - max(0, y+hat_height-self.height)
@@ -317,7 +317,7 @@ if __name__ == "__main__":
     parser.add_arg("CAMERA_WIDTH", default=1280, type=int)
     parser.add_arg("CAMERA_HEIGHT", default=720, type=int)
     parser.add_arg("CAMERA_FPS", default=30, type=int)
-    parser.add_arg("SANTA_HAT_PLUGIN", default=True, type=bool)
+    parser.add_arg("SANTA_HAT_PLUGIN", default=False, type=bool)
     args = parser.parse_args()
 
     main(

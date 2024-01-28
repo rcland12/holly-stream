@@ -1,6 +1,6 @@
 import os
 import cv2
-import numpy
+import json
 import triton_python_backend_utils as pb_utils
 
 from ast import literal_eval
