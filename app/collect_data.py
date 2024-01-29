@@ -106,7 +106,7 @@ def main(
 if __name__ == "__main__":
     main(
         save_path="../data/",
-        number_to_save=100,
+        number_to_save=200,
         start_index=0,
         period=5,
         camera_index=0,
