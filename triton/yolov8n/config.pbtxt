@@ -1,4 +1,4 @@
-name: "yolov8n"
+name: "yolov8"
 platform: "ensemble"
 max_batch_size: 0
 
