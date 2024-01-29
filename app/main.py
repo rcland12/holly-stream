@@ -289,7 +289,6 @@ def main(
 
             if bboxes:
                 frame = annotator(frame, bboxes, confs, indexes)
-                # frame = annotator.santa_hat_plugin(frame, bboxes, confs)
             tracking_index += 1
 
             p.stdin.write(frame.tobytes())
