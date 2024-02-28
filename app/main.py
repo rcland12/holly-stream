@@ -298,7 +298,7 @@ def main(
             ret, frame = camera.read()
 
             if not ret:
-                print("Frame read failed")
+                print("Frame failed to load...")
                 break
 
             p.stdin.write(frame.tobytes())
