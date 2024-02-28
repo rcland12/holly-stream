@@ -289,7 +289,6 @@ def main(
 
             if bboxes:
                 frame = annotator(frame, bboxes, confs, indexes)
-                # frame = annotator.santa_hat_plugin(frame, bboxes, confs)
             tracking_index += 1
 
             p.stdin.write(frame.tobytes())
@@ -299,7 +298,7 @@ def main(
             ret, frame = camera.read()
 
             if not ret:
-                print("Frame read failed")
+                print("Frame failed to load...")
                 break
 
             p.stdin.write(frame.tobytes())

@@ -1,4 +1,4 @@
-name: "yolov8n"
+name: "yolov8"
 platform: "ensemble"
 max_batch_size: 0
 
@@ -15,7 +15,7 @@ output [
     name: "response"
     data_type: TYPE_FP32
     dims: [ -1, -1 ]
-    label_filename: "yolov8_labels.txt"
+    label_filename: "labels.txt"
   }
 ]
 

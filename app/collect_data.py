@@ -11,7 +11,7 @@ def check_save_path(save_path, start_index):
     Args:
         save_path (str): Path where images will be saved to.
         start_index (int): Index the image numbering starts at.
-    
+
     Returns:
         start_index (int): Unless there are already images present, it will return the start_index that was input.
     """
@@ -95,9 +95,9 @@ def main(
 
             if start_index == number_to_save:
                 break
-        
+
         frame_index += 1
-    
+
     print(f"Saved {number_to_save} picture to `{save_path}` successfully.")
     return
 
@@ -106,7 +106,7 @@ def main(
 if __name__ == "__main__":
     main(
         save_path="../data/",
-        number_to_save=100,
+        number_to_save=200,
         start_index=0,
         period=5,
         camera_index=0,

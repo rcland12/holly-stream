@@ -1,5 +1,6 @@
 import os
 import cv2
+import json
 import numpy as np
 import triton_python_backend_utils as pb_utils
 
@@ -48,82 +49,60 @@ class EnvArgumentParser():
 def letterbox(
     image=None,
     new_shape=(640, 640),
-    auto=False,
-    scaleFill=False,
-    scaleup=True,
-    center=True,
-    stride=32,
-    labels=None
+    output_type='float32'
 ):
-    labels = {}
-    img = image
-    shape = img.shape[:2]  # current shape [height, width]
-    new_shape = labels.pop("rect_shape", new_shape)
-    if isinstance(new_shape, int):
-        new_shape = (new_shape, new_shape)
-
-    # Scale ratio (new / old)
+    shape = image.shape[:2]
     r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
-    if not scaleup:  # only scale down, do not scale up (for better val mAP)
-        r = min(r, 1.0)
 
-    # Compute padding
-    ratio = r, r  # width, height ratios
+    ratio = r, r
     new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
-    dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # wh padding
-    if auto:  # minimum rectangle
-        dw, dh = np.mod(dw, stride), np.mod(dh, stride)  # wh padding
-    elif scaleFill:  # stretch
-        dw, dh = 0.0, 0.0
-        new_unpad = (new_shape[1], new_shape[0])
-        ratio = new_shape[1] / shape[1], new_shape[0] / shape[0]  # width, height ratios
+    dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]
 
-    if center:
-        dw /= 2  # divide padding into 2 sides
-        dh /= 2
+    dw /= 2
+    dh /= 2
 
-    if shape[::-1] != new_unpad:  # resize
-        img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
-    top, bottom = int(round(dh - 0.1)) if center else 0, int(round(dh + 0.1))
-    left, right = int(round(dw - 0.1)) if center else 0, int(round(dw + 0.1))
-    img = cv2.copyMakeBorder(
-        img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114)
-    )  # add border
-    if labels.get("ratio_pad"):
-        labels["ratio_pad"] = (labels["ratio_pad"], (left, top))  # for evaluation
+    if shape[::-1] != new_unpad:
+        image = cv2.resize(image, new_unpad, interpolation=cv2.INTER_LINEAR)
 
-    return img
+    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    image = cv2.copyMakeBorder(
+        image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114)
+    )
+
+    return image.transpose((2, 0, 1))[::-1].astype(output_type)
 
 
 
 class TritonPythonModel:
     def initialize(self, args):
+        model_config = json.loads(args["model_config"])
+        OUTPUT_0_config = pb_utils.get_output_config_by_name(model_config, "OUTPUT_0")
+    
         load_dotenv()
         parser = EnvArgumentParser()
         parser.add_arg("MODEL_DIMS", default=(640, 640), type=tuple)
         args = parser.parse_args()
 
         self.model_dims = args.MODEL_DIMS
+        self.output_type = pb_utils.triton_string_to_numpy(OUTPUT_0_config["data_type"])
 
     def execute(self, requests):
         responses = []
         for request in requests:
-            img = letterbox(
-                pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy(),
-                self.model_dims
+            image = letterbox(
+                image=pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy(),
+                new_shape=self.model_dims,
+                output_type=self.output_type
             )
-            img = np.stack(img)
-            print(img.shape)
-            img = img[..., ::-1].transpose((2, 0, 1))  # BGR to RGB, BHWC to BCHW, (n, 3, h, w)
-            img = np.ascontiguousarray(img).astype('float16')  # contiguous
-            img /= 255  # 0 - 255 to 0.0 - 1.0
+            image /= 255
 
             responses.append(
                 pb_utils.InferenceResponse(
                     output_tensors=[
                         pb_utils.Tensor(
                             "OUTPUT_0",
-                            img[None]
+                            image[None]
                         )
                     ]
                 )

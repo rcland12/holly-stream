@@ -66,27 +66,14 @@ def non_max_suppression(
     conf_thres=0.25,
     iou_thres=0.45,
     classes=None,
-    multi_label=False,
-    labels=(),
-    max_det=300,
-    nc=0,
-    max_nms=30000,
-    max_wh=7680,
     scale=True,
     normalize=False
 ):
-    assert 0 <= conf_thres <= 1, f"Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0"
-    assert 0 <= iou_thres <= 1, f"Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0"
-    if isinstance(prediction, (list, tuple)):
-        prediction = prediction[0]
-
     bs = prediction.shape[0]
-    nc = nc or (prediction.shape[1] - 4)
+    nc = prediction.shape[1] - 4
     nm = prediction.shape[1] - nc - 4
     mi = 4 + nc
     xc = prediction[:, 4:mi].amax(1) > conf_thres
-
-    multi_label &= nc > 1
 
     prediction = prediction.transpose(-1, -2)
     prediction[..., :4] = xywh2xyxy(prediction[..., :4])
@@ -95,24 +82,13 @@ def non_max_suppression(
     for xi, x in enumerate(prediction):
         x = x[xc[xi]]
 
-        if labels and len(labels[xi]):
-            lb = labels[xi]
-            v = torch.zeros((len(lb), nc + nm + 4), device=x.device)
-            v[:, :4] = xywh2xyxy(lb[:, 1:5])
-            v[range(len(lb)), lb[:, 0].long() + 4] = 1.0
-            x = torch.cat((x, v), 0)
-
         if not x.shape[0]:
             continue
 
         box, cls, mask = x.split((4, nc, nm), 1)
 
-        if multi_label:
-            i, j = torch.where(cls > conf_thres)
-            x = torch.cat((box[i], x[i, 4 + j, None], j[:, None].float(), mask[i]), 1)
-        else:
-            conf, j = cls.max(1, keepdim=True)
-            x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres]
+        conf, j = cls.max(1, keepdim=True)
+        x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres]
 
         if classes is not None:
             x = x[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)]
@@ -120,15 +96,15 @@ def non_max_suppression(
         n = x.shape[0]
         if not n:
             continue
-        if n > max_nms:
-            x = x[x[:, 4].argsort(descending=True)[:max_nms]]
+        if n > 30000:
+            x = x[x[:, 4].argsort(descending=True)[:30000]]
 
-        c = x[:, 5:6] * max_wh
+        c = x[:, 5:6] * 7680
         scores = x[:, 4]
 
         boxes = x[:, :4] + c
         i = nms(boxes, scores, iou_thres)
-        i = i[:max_det]
+        i = i[:300]
 
         output[xi] = x[i]
 

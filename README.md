@@ -1,45 +1,129 @@
 # Holly Stream
-This application will ingest your computers webcam feed (using ffmpeg), apply an object detection task on the feed with bounding boxes, and send that feed via RTMP to an address of your choice. You have the following options for recording and applying a custom object detection model:
+This application will ingest your computers camera feed, apply an object detection task with bounding boxes, and send that feed via RTMP to an address of your choice. Watch the stream on your computer, another local machine, or an external web server.
 
-1. [Record a webcam feed from a Jetson Nano architecture.](#deploying-on-jetson-nano)
-2. [Record a webcam feed from a Linux machine.](#deploying-on-a-linux-machine)
+# Requirements
 
-And the following options for serving this feed:
+* Docker and the compose plugin
+* CUDA-enabled GPU
+* At least 4GB of RAM
+* Webcam, at least 720p recommended
+
+# Prerequisites
+There are a couple of recommended and required steps before you can run this application.
+
+## (required) A YOLOv8 or YOLOv5 model
+This application uses a service called Nvidia Trition Inference Server. It uses an object detection model format called TensorRT. THIS MODEL FORMAT IS MACHINE SPECIFIC. If I trained a YOLOv8 model on a Nvidia GeForce GTX 1060 GPU and convert it, it will not work on another GPU architecture. Therefore, you must convert your own model. If you want to use the default YOLOv8 model, you can simply follow the steps below. Otherwise, the next section will explain how to train a custom model with labels of your choice.
+
+### How to convert a YOLOv8n (nano) model to TensorRT format
+
+1. Set up a python environment.
+
+2. Install YOLOv8 requirements:
+    ```bash
+    pip install ultralytics
+    ```
+
+3. Convert the model to ONNX format in a python script:
+
+    ```python
+    from ultralytics import YOLO
+    model = YOLO('yolov8n.pt')
+    model.export(
+        format='onnx',   # export to ONNX
+        half=True,       # FP16 quantization
+        simplify=True    # ONNX model simplification
+    )
+    ```
+    This model should save to `weights/yolov8n.onnx`.
+
+4. Launch the Nvidia TensorRT container and convert the model:
+
+    ```bash
+    docker run -it --rm --gpus all -v ./weights:/models nvcr.io/nvidia/tensorrt:23.12-py3 \
+    trtexec --onnx=/models/yolov8n.onnx --saveEngine=/models/model.plan --fp16 --inputIOFormats=fp16:chw --outputIOFormats=fp16:chw
+    ```
+    This process should take a couple minutes.
+
+5. Move the TensorRT model (`weights/model.plan`) to the triton directory:
+
+    ```bash
+    mv weights/model.plan triton/object_detection/1/
+    ```
+
+Triton should now be ready.
+
+## (optional) Train a custom YOLOv8 model
+Follow these steps if you want to train a model from scratch ([official docs](https://docs.ultralytics.com/)). It is highly recommended to use a CUDA-enabled machine for training. If you already have a trained model in PyTorch format (`.pt`) skip to step 4.
+
+1. Gather data. Collect images of the object(s) you want to detect. I created a script at `app/collect_data.py` to make this process easier.
+
+2. Annotate your data in YOLO format. I highly recommend [Roboflow](https://roboflow.com/) and using a 70/30 split between your training and validation data.
+
+3. Set up a python environment and install the YOLOv8 requirements:
+    ```bash
+    pip install ultralytics
+    ```
+
+4. Train your model. A CUDA-enabled machine is highly encouraged for this step. A training script will look something like this:
+    ```python
+    from ultralytics import YOLO
+    model = YOLO('yolov8n.pt')
+    model.train(
+        data='data.yaml',
+        epochs=1000,
+        batch=16,
+        device=0,
+        optimizer='AdamW'
+    )
+    ```
+    I had to hardcode the full path for train/val in my `data.yaml` for YOLOv8 to find the training data (e.g. `train: /home/user/holly-stream/train/images`).
+
+5. After training, export your model as ONNX. 
+    ```python
+    from ultralytics import YOLO
+    model = YOLO('runs/detect/train/weights/best.pt')
+    model.export(
+        format='onnx',   # export to ONNX
+        half=True,       # FP16 quantization
+        simplify=True    # ONNX model simplification
+    )
+    ```
+    The model will be saved in the same directory your `best.pt` model is.
+
+6. Launch the Nvidia TensorRT container and convert the model. Move the ONNX model to a directory called `weights/` and run the command below. It will save the TensorRT model (`.plan`) to the same directory.
+    ```bash
+    docker run -it --rm --gpus all -v ./weights:/models nvcr.io/nvidia/tensorrt:23.12-py3 \
+    trtexec --onnx=/models/yolov8n.onnx --saveEngine=/models/model.plan --fp16 --inputIOFormats=fp16:chw --outputIOFormats=fp16:chw
+    ```
+    This process should take a couple minutes.
+
+7. Move the model to the correct location, `holly-stream/triton/object_detection/1/model.plan`.
+
+# Installation
+
+Pull the docker images:
+```bash
+docker pull rcland12/detection-stream:linux-latest
+docker pull rcland12/detection-stream:linux-triton-latest
+```
+
+# Deployment
+You have the following options for serving this feed:
 
 1. To the same device (localhost).
 2. To another local device (LAN).
 3. To a remote web server (WAN).
 
-Lastly, you have two options for reading in this stream (client):
+You have two options for reading in this stream (client):
 
 1. [Media player (VLC, Windows Media Player, etc.)](#watching-stream-through-streaming-software)
 2. [Web page via Nginx/HLS.](#watching-stream-through-web-browser)
 
-Pick any of the previous three options and follow the instructions below to deploy. If you are new to object detection I recommend you stick to the default model provided. Otherwise, you can supply your own YOLOv5 or YOLOv8 model.
+Pick an option from each list and follow the instructions below to deploy. If you are new to object detection I recommend you stick to the default model (section 1 from Prerequisites). Otherwise, you can supply your own YOLOv8 model (section 2 from Prerequisites).
 
-### Requirements:
-- Linux machine with a webcam and GPU (optional) OR Nvidia Jetson Nano SDK (JetPack 4.6) with camera attached.
-- Docker and the compose plugin (instructions for installing compose plugin on Jetson Nano [here](#installing-the-docker-compose-plugin-on-jetson-nano))
+---
 
-### Installing the docker-compose plugin on Jetson Nano
-Install using the following command:
-
-```bash
-pip3 install --upgrade pip
-pip3 install docker-compose==1.27.4
-```
-
-Check if it was installed correctly:
-
-```bash
-docker-compose version
-```
-
-# Deployment
-
-## Deploying on Jetson Nano
-
-If you are using a Jetson Nano you must have a camera attached. Begin by cloning the repository. Create an `.env` file to define parameters you wish to change. If you do not define a parameter it will default to a value given below, but you must define an empty `.env` file at minimum.
+You must have a webcam attached to your Linux machine. Create an `.env` file to define parameters you wish to change. If you do not define a parameter it will default to a value given below, but YOU MUST DEFINE AN EMPTY `.env` FILE AT MINIMUM.
 
 ```bash
 touch .env
@@ -49,8 +133,12 @@ Here is a list of all possible arguments:
 
 ```bash
 OBJECT_DETECTION=True
-MODEL=weights/yolov5n.pt
-CLASSES=[0, 16]
+CLASSES=[0, 1]
+MODEL_NAME=yolov8n
+MODEL_REPOSITORY=/root/app/triton
+AWS_ACCESS_KEY_ID=<aws_access_key_id>
+AWS_SECRET_ACCESS_KEY=<aws_secret_access_key>
+AWS_DEFAULT_REGION=<aws_default_region>
 
 STREAM_IP=127.0.0.1
 STREAM_PORT=1935
@@ -58,90 +146,24 @@ STREAM_APPLICATION=live
 STREAM_KEY=stream
 
 CAMERA_INDEX=0
-CAMERA_WIDTH=640
-CAMERA_HEIGHT=480
-CAMERA_FPS=30
+CAMERA_WIDTH=1280
+CAMERA_HEIGHT=720
+SANTA_HAT_PLUGIN=False
 ```
 
 A few comments about the parameters:
 - The `OBJECT_DETECTION` variable is a boolean to turn that tasks on/off. If you turn it off you simply have a live stream feed.
-- You can use any custom trained YOLOv5 model for the `MODEL` parameter.
 - The `CLASSES` variable takes in a list. If you wish to include all possible classes, remove it from the `.env` file. The possible classes for the default model are [listed below](#change-the-default-class-predictor).
+- The `MODEL_NAME` variable is the name of the ensemble model in Triton.
+- The `MODEL_REPOSITORY` is the path in the Triton container to the model repository. You can also provide an s3 bucket path for this variable (e.g. `s3://example-s3-models-path/`).
+- If you provide an s3 bucket for `MODEL_REPOSITORY`, you must also provided the `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_DEFAULT_REGION`.
+---
 - All arguments accept the data type present above. `STREAM_IP` takes a string, `STREAM_PORT` takes an integer, `STREAM_APPLICATION` takes a string, etc.
-
-Next, if you intend to use the GPU for inference (highly recommended) you must enable the Nvidia runtime. Edit the file `/etc/docker/daemon.json` with the following changes:
-
-```bash
-{
-    "runtimes": {
-        "nvidia": {
-            "path": "nvidia-container-runtime",
-            "runtimeArgs": []
-        }
-    },
-    "default-runtime": "nvidia"
-}
-```
-
-The application is ready to launch, so pick the method for receiving the stream:
-
-1. If you are watching the stream on the same device set the `STREAM_IP` to `127.0.0.1`, or whatever localhost address you want.
-2. If you are streaming the feed to another device on your local network, set the `STREAM_IP` to the IPV4 address of that device. To find the IP address of a device on linux machine run `ip a` and look for it under `wl01` or something similar. On a windows machine open Windows Powershell and run `ipconfig` and look for `IP address`.
-3. If you are streaming the feed to another server set the `STREAM_IP` to the public IP address for that server. Also make sure you expose port 1935 on the firewall and router if necessary for the server your sending the stream to.
-
-Lastly, to receive the stream on the device you picked above you have two options:
-
-1. [Watch the stream on streaming software such as VLC, Windows Media Player, OBS.](#watching-stream-through-streaming-software)
-2. [Watch the stream through a browser.](#watching-stream-through-web-browser)
-
-## Deploying on a Linux machine
-
-You must have a webcam attached to your Linux machine. Begin by cloning the repository. Create an `.env` file to define parameters you wish to change. If you do not define a parameter it will default to a value given below, but you must define an empty `.env` file at minimum.
-
-```bash
-touch .env
-```
-
-Here is a list of all possible arguments:
-
-```bash
-OBJECT_DETECTION=True
-MODEL=weights/yolov5n.pt
-CLASSES=[0, 16]
-
-STREAM_IP=127.0.0.1
-STREAM_PORT=1935
-STREAM_APPLICATION=live
-STREAM_KEY=stream
-
-CAMERA_INDEX=0
-CAMERA_WIDTH=640
-CAMERA_HEIGHT=480
-CAMERA_FPS=30
-```
-
-A few comments about the parameters:
-- The `OBJECT_DETECTION` variable is a boolean to turn that tasks on/off. If you turn it off you simply have a live stream feed.
-- You can use any custom trained YOLOv5 model for the `MODEL` parameter.
-- The `CLASSES` variable takes in a list. If you wish to include all possible classes, remove it from the `.env` file. The possible classes for the default model are [listed below]().
-- All arguments accept the data type present above. `STREAM_IP` takes a string, `STREAM_PORT` takes an integer, `STREAM_APPLICATION` takes a string, etc.
-
-If you have an CUDA enabled Nvidia GPU it is highly recommended you add the following block to the `docker-compose.yml` file under the service `linux-stream`.This will allow you to inference on your GPU, which is highly optimal for matrix multiplications.
-```bash
-deploy:
-  resources:
-    reservations:
-      devices:
-        - driver: nvidia
-          count: 1
-          capabilities: [gpu]
-```
-
-The application is ready to launch, so pick the method for receiving the stream:
-
-1. If you are watching the stream on the same device set the `STREAM_IP` to `127.0.0.1`, or whatever localhost address you want.
-2. If you are streaming the feed to another device on your local network, set the `STREAM_IP` to the IPV4 address of that device. To find the IP address of a device on linux machine run `ip a` and look for it under `wl01` or something similar. On a windows machine open Windows Powershell and run `ipconfig` and look for `IP address`.
-3. If you are streaming the feed to another server set the `STREAM_IP` to the public IP address for that server. Also make sure you expose port 1935 on the firewall and router if necessary for the server your sending the stream to.
+- If you are watching the stream on the same device set the `STREAM_IP` to `127.0.0.1`, or whatever localhost address you want.
+- If you are streaming the feed to another device on your local network, set the `STREAM_IP` to the IPV4 address of that device. To find the IP address of a device on linux machine run `ip a` and look for it under `wl01` or something similar. On a windows machine open Windows Powershell and run `ipconfig` and look for `IP address`.
+- If you are streaming the feed to another server set the `STREAM_IP` to the public IP address for that server. Also make sure you expose port 1935 on the firewall and router if necessary for the server your sending the stream to.
+---
+- The variable `SANTA_HAT_PLUGIN`, if set to True, will not add a bounding box, but a santa hat to the object with the highest probability score. I use this parameter when detecting my dog using a custom model, especially around Christmas!
 
 Lastly, to receive the stream on the device you picked above you have two options:
 
@@ -155,25 +177,20 @@ The client machine you are using must have Docker and the compose plugin. You wi
 docker compose up -d nginx-stream
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Jetson Nano or Linux). Run the following docker command if you are using a Jetson Nano:
+Once the client software is running you can launch the streaming application from the server side (Linux machine). Run the following docker compose command:
 
 ```bash
-docker-compose up -d jetson-stream
-```
-
-Or on a linux machine:
-```bash
-docker compose up -d linux-stream
+docker compose up -d app
 ```
 
 I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker compose down`.
 
 Lastly, on the client side you can open up your streaming software and find where you can watch a network stream or URL stream, then use the address you set up in the parameters:
 ```bash
-rtmp://<STREAM_IP>:<STREAM_PORT>/<STREAM_APPLICATION>/<STREAM_KEY>
+rtmp://0.0.0.0:<STREAM_PORT>/<STREAM_APPLICATION>/<STREAM_KEY>
 
 # example
-rtmp://127.0.0.1:1935/live/stream
+rtmp://0.0.0.0:1935/live/stream
 ```
 
 ## Watching stream through web browser
@@ -183,13 +200,8 @@ The client machine you are using must have Docker and the compose plugin. You wi
 docker compose up -d nginx-web
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Jetson Nano or Linux). Run the following docker command if you are using a Jetson Nano:
+Once the client software is running you can launch the streaming application from the server side (Linux machine). Run the following docker compose command:
 
-```bash
-docker-compose up -d jetson-stream
-```
-
-Or on a linux machine:
 ```bash
 docker compose up -d linux-stream
 ```
@@ -208,7 +220,7 @@ File `nginx/stream/stream.html`:
 File `nginx/nginx-web/nginx.conf`:
 - Whitelist your IP address by first finding your home IP address (you can do so [here](https://whatismyipaddress.com/)).
 - Under the rtmp block, aroud lines 51-54 add another line with `allow publish <your_ipv4>;`. Don't forget the semicolon.
-- Add your domain name on line 36. Replace `server_name localhost;` with `server_name website.com;`.Don't forget the semicolon.
+- Add your domain name on line 36. Replace `server_name localhost;` with `server_name website.com;`. Don't forget the semicolon.
 - If for some reason you want to change the application name edit line 57 by replacing `application live` with `application <application_name>`. Then remember to also make that change in your `.env` file for the variable STREAM_APPLICATION.
 
 Now you can launch this service on your web server:
@@ -217,13 +229,8 @@ Now you can launch this service on your web server:
 docker compose run -d nginx-web
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Jetson Nano or Linux). Run the following docker command if you are using a Jetson Nano:
+Once the client software is running you can launch the streaming application from the server side (Linux machine). Run the following docker compose command:
 
-```bash
-docker-compose up -d jetson-stream
-```
-
-Or on a linux machine:
 ```bash
 docker compose up -d linux-stream
 ```
