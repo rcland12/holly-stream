@@ -1,5 +1,5 @@
 #!/bin/bash
-if [ "${OBEJCT_DETECTION}" == "True" ]; then
+if [ "${OBJECT_DETECTION}" == "True" ]; then
     python3 main.py
 elif [ "${OBJECT_DETECTION}" == "False" ]; then
     /bin/bash stream.sh
