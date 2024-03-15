@@ -5,4 +5,5 @@ elif [ "${OBJECT_DETECTION}" == "False" ]; then
     /bin/bash stream.sh
 else
     echo "Invalid input for OBJECT_DETECTION. Expecting True or False; received ${OBJECT_DETECTION}."
+    exit 120
 fi
