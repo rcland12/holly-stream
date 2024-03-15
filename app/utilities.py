@@ -18,11 +18,12 @@ class EnvArgumentParser():
         if env is None:
             value = default
         else:
-            value = self.cast_type(env, type)
+            value = self._cast_type(env, type)
 
         self.dict[variable] = value
 
-    def cast_type(self, arg, d_type):
+    @staticmethod
+    def _cast_type(arg, d_type):
         if d_type == list or d_type == tuple or d_type == bool:
             try:
                 cast_value = literal_eval(arg)

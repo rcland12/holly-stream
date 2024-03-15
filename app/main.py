@@ -217,7 +217,6 @@ class Annotator():
 
 
 def main(
-    object_detection,
     triton_url,
     model_name,
     stream_ip,
@@ -260,54 +259,43 @@ def main(
 
     p = subprocess.Popen(command, stdin=subprocess.PIPE)
 
-    if object_detection:
-        model = ObjectDetection(
-            model_name=model_name,
-            triton_url=triton_url
-        )
+    model = ObjectDetection(
+        model_name=model_name,
+        triton_url=triton_url
+    )
 
-        annotator = Annotator(
-            model.model.classes,
-            camera_width,
-            camera_height,
-            santa_hat_plugin
-        )
+    annotator = Annotator(
+        model.model.classes,
+        camera_width,
+        camera_height,
+        santa_hat_plugin
+    )
 
-        period = 2
-        tracking_index = 0
+    period = 2
+    tracking_index = 0
 
-        while camera.isOpened():
-            ret, frame = camera.read()
+    while camera.isOpened():
+        ret, frame = camera.read()
 
-            if not ret:
-                print("Frame failed to load...")
-                break
+        if not ret:
+            print("Frame failed to load...")
+            break
 
-            if tracking_index % period == 0:
-                bboxes, confs, indexes = model(frame)
-                tracking_index = 0
+        if tracking_index % period == 0:
+            bboxes, confs, indexes = model(frame)
+            tracking_index = 0
 
-            if bboxes:
-                frame = annotator(frame, bboxes, confs, indexes)
-            tracking_index += 1
+        if bboxes:
+            frame = annotator(frame, bboxes, confs, indexes)
+        tracking_index += 1
 
-            p.stdin.write(frame.tobytes())
+        p.stdin.write(frame.tobytes())
 
-    else:
-        while camera.isOpened():
-            ret, frame = camera.read()
-
-            if not ret:
-                print("Frame failed to load...")
-                break
-
-            p.stdin.write(frame.tobytes())
 
 
 if __name__ == "__main__":
     load_dotenv()
     parser = EnvArgumentParser()
-    parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
     parser.add_arg("TRITON_URL", default="grpc://localhost:8001", type=str)
     parser.add_arg("MODEL_NAME", default="yolov8n", type=str)
     parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
@@ -321,7 +309,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(
-        args.OBJECT_DETECTION,
         args.TRITON_URL,
         args.MODEL_NAME,
         args.STREAM_IP,
