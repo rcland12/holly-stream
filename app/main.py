@@ -121,7 +121,7 @@ class ObjectDetection():
             model_name,
             triton_url
         ):
- 
+
         try:
             self.model = TritonRemoteModel(url=triton_url, model=model_name)
         except ConnectionError as e:
@@ -196,22 +196,22 @@ class Annotator():
             h = hat_height - max(0, y+hat_height-self.height)
             w = hat_width - max(0, x+hat_width-self.width)
             frame[y-h:y, x:x+w, :] = frame[y-h:y, x:x+w, :] * ~mask_rgb_boolean[0:h, 0:w, :] + (santa_hat * mask_rgb_boolean)[0:h, 0:w, :]
-            
+
         elif x < 0 and y < 0:
             h = hat_height + y
             w = hat_width + x
             frame[0:0+h, 0:0+w, :] = frame[0:0+h, 0:0+w, :] * ~mask_rgb_boolean[hat_height-h:hat_height, hat_width-w:hat_width, :] + (santa_hat * mask_rgb_boolean)[hat_height-h:hat_height, hat_width-w:hat_width, :]
-            
+
         elif x < 0 and y >= 0:
             h = hat_height - max(0, y+hat_height-self.height)
             w = hat_width + x
             frame[y:y+h, 0:0+w, :] = frame[y:y+h, 0:0+w, :] * ~mask_rgb_boolean[0:h, hat_width-w:hat_width, :] + (santa_hat * mask_rgb_boolean)[0:h, hat_width-w:hat_width, :]
-            
+
         elif x >= 0 and y < 0:
             h = hat_height + y
             w = hat_width - max(0, x+hat_width-self.width)
             frame[0:0+h, x:x+w, :] = frame[0:0+h, x:x+w, :] * ~mask_rgb_boolean[hat_height-h:hat_height, 0:w, :] + (santa_hat * mask_rgb_boolean)[hat_height-h:hat_height, 0:w, :]
-        
+
         return frame
 
 
