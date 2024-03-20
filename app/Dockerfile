@@ -69,5 +69,5 @@ RUN python3 -m pip install --upgrade --no-cache-dir pip \
     && rm -rf ${BUILDDIR}/tritonserver/
 
 WORKDIR ${APPDIR}
-COPY main.py utilities.py ./
-CMD ["python3", "main.py"]
+COPY main.py utilities.py stream.sh entrypoint.sh ./
+CMD ["/bin/bash", "entrypoint.sh"]

@@ -1,6 +1,7 @@
 import os
 import torch
 import numpy as np
+from torch.utils.dlpack import from_dlpack
 import triton_python_backend_utils as pb_utils
 
 from ast import literal_eval
@@ -24,11 +25,12 @@ class EnvArgumentParser():
         if env is None:
             value = default
         else:
-            value = self.cast_type(env, type)
+            value = self._cast_type(env, type)
 
         self.dict[variable] = value
 
-    def cast_type(self, arg, d_type):
+    @staticmethod
+    def _cast_type(arg, d_type):
         if d_type == list or d_type == tuple or d_type == bool:
             try:
                 cast_value = literal_eval(arg)
@@ -45,13 +47,16 @@ class EnvArgumentParser():
     def parse_args(self):
         return self._define_dict(self.dict)
 
+
 def box_area(box):
     return (box[2] - box[0]) * (box[3] - box[1])
+
 
 def box_iou(box1, box2, eps=1e-7):
     (a1, a2), (b1, b2) = box1[:, None].chunk(2, 2), box2.chunk(2, 1)
     inter = (torch.min(a2, b2) - torch.max(a1, b1)).clamp(0).prod(2)
     return inter / (box_area(box1.T)[:, None] + box_area(box2.T) - inter + eps)
+
 
 def xywh2xyxy(x):
     y = x.clone()
@@ -61,6 +66,7 @@ def xywh2xyxy(x):
     y[..., 3] = x[..., 1] + x[..., 3] / 2
     return y
 
+
 def non_max_suppression(
         prediction,
         img0_shape,
@@ -68,16 +74,13 @@ def non_max_suppression(
         conf_thres=0.3,
         iou_thres=0.25,
         classes=None,
-        max_det=300,
-        max_nms=30000,
         scale=True,
-        normalize=True
+        normalize=False
 ):
-    prediction = torch.tensor(np.float32(prediction))
+    prediction = prediction.float()
     bs = prediction.shape[0]
     xc = prediction[..., 4] > conf_thres
 
-    max_nms = 30000
     redundant = True
     merge = True
 
@@ -99,13 +102,13 @@ def non_max_suppression(
         n = x.shape[0]
         if not n:
             continue
-        elif n > max_nms:
-            x = x[x[:, 4].argsort(descending=True)[:max_nms]]
+        elif n > 30000:
+            x = x[x[:, 4].argsort(descending=True)[:30000]]
 
         boxes, scores = x[:, :4], x[:, 4]
         i = nms(boxes, scores, iou_thres)
-        if i.shape[0] > max_det:
-            i = i[:max_det]
+        if i.shape[0] > 300:
+            i = i[:300]
         if merge and (1 < n < 3E3):
             iou = box_iou(boxes[i], boxes) > iou_thres
             weights = iou * scores[None]
@@ -115,24 +118,26 @@ def non_max_suppression(
 
         output[xi] = x[i]
 
-    for tensor in output:
-        if scale:
-            gain = min(img1_shape[0] / img0_shape[1], img1_shape[1] / img0_shape[0])
-            pad = (img1_shape[1] - img0_shape[0] * gain) / 2, (img1_shape[0] - img0_shape[1] * gain) / 2
+    output = output[0]
 
-            tensor[:, [0, 2]] -= pad[0]
-            tensor[:, [1, 3]] -= pad[1]
-            tensor[:, :4] /= gain
+    if scale:
+        gain = min(img1_shape[0] / img0_shape[1], img1_shape[1] / img0_shape[0])
+        pad = (img1_shape[1] - img0_shape[0] * gain) / 2, (img1_shape[0] - img0_shape[1] * gain) / 2
 
-            tensor[..., [0, 2]] = tensor[..., [0, 2]].clip(0, img0_shape[0])
-            tensor[..., [1, 3]] = tensor[..., [1, 3]].clip(0, img0_shape[1])
+        output[:, [0, 2]] -= pad[0]
+        output[:, [1, 3]] -= pad[1]
+        output[:, :4] /= gain
 
-        if normalize:
-            tensor[:, :4] = tensor[:, :4] @ np.diag([1/img0_shape[0], 1/img0_shape[1], 1/img0_shape[0], 1/img0_shape[1]])
+        output[..., [0, 2]] = output[..., [0, 2]].clip(0, img0_shape[0])
+        output[..., [1, 3]] = output[..., [1, 3]].clip(0, img0_shape[1])
 
-        tensor = tensor.numpy()
+    if normalize:
+        output[..., :4] = torch.mm(
+            output[..., :4],
+            torch.diag(torch.Tensor([1/img0_shape[0], 1/img0_shape[1], 1/img0_shape[0], 1/img0_shape[1]]))
+        )
 
-    return np.concatenate(output, axis=0)
+    return output.numpy()
 
 
 
@@ -140,40 +145,44 @@ class TritonPythonModel:
     def initialize(self, args):
         load_dotenv()
         parser = EnvArgumentParser()
-        parser.add_arg("CLASSES", default=None, type=list)
+        parser.add_arg("CAMERA_WIDTH", default=640, type=int)
+        parser.add_arg("CAMERA_HEIGHT", default=480, type=int)
         parser.add_arg("MODEL_DIMS", default=(640, 640), type=tuple)
         parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
         parser.add_arg("IOU_THRESHOLD", default=0.25, type=float)
-        parser.add_arg("SANTA_HAT", default=False, type=bool)
+        parser.add_arg("CLASSES", default=None, type=list)
+        parser.add_arg("SANTA_HAT_PLUGIN", default=False, type=bool)
         args = parser.parse_args()
 
-        self.classes = args.CLASSES
+        self.camera_width = args.CAMERA_WIDTH
+        self.camera_height = args.CAMERA_HEIGHT
         self.model_dims = args.MODEL_DIMS
         self.conf_thres = args.CONFIDENCE_THRESHOLD
         self.iou_thres = args.IOU_THRESHOLD
-        self.santa_hat = args.SANTA_HAT
+        self.classes = args.CLASSES
+        self.santa_hat_plugin = args.SANTA_HAT_PLUGIN
  
     def execute(self, requests):
         responses = []
         for request in requests:
             results = non_max_suppression(
-                pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy(),
-                pb_utils.get_input_tensor_by_name(request, "INPUT_1").as_numpy(),
+                from_dlpack(pb_utils.get_input_tensor_by_name(request, "INPUT_0").to_dlpack()),
+                img0_shape=(self.camera_width, self.camera_height),
                 img1_shape=self.model_dims,
                 conf_thres=self.conf_thres,
                 iou_thres=self.iou_thres,
                 classes=self.classes,
-                normalize=self.santa_hat
+                normalize=self.santa_hat_plugin
             )
 
             responses.append(
                 pb_utils.InferenceResponse(
                     output_tensors=[
-                        pb_utils.Tensor("OUTPUT_0", results),
+                        pb_utils.Tensor("OUTPUT_0", results)
                     ]
                 )
             )
-          
+
         return responses
 
     def finalize(self):
