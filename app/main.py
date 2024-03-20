@@ -121,7 +121,7 @@ class ObjectDetection():
             model_name,
             triton_url
         ):
- 
+
         try:
             self.model = TritonRemoteModel(url=triton_url, model=model_name)
         except ConnectionError as e:
@@ -196,28 +196,27 @@ class Annotator():
             h = hat_height - max(0, y+hat_height-self.height)
             w = hat_width - max(0, x+hat_width-self.width)
             frame[y-h:y, x:x+w, :] = frame[y-h:y, x:x+w, :] * ~mask_rgb_boolean[0:h, 0:w, :] + (santa_hat * mask_rgb_boolean)[0:h, 0:w, :]
-            
+
         elif x < 0 and y < 0:
             h = hat_height + y
             w = hat_width + x
             frame[0:0+h, 0:0+w, :] = frame[0:0+h, 0:0+w, :] * ~mask_rgb_boolean[hat_height-h:hat_height, hat_width-w:hat_width, :] + (santa_hat * mask_rgb_boolean)[hat_height-h:hat_height, hat_width-w:hat_width, :]
-            
+
         elif x < 0 and y >= 0:
             h = hat_height - max(0, y+hat_height-self.height)
             w = hat_width + x
             frame[y:y+h, 0:0+w, :] = frame[y:y+h, 0:0+w, :] * ~mask_rgb_boolean[0:h, hat_width-w:hat_width, :] + (santa_hat * mask_rgb_boolean)[0:h, hat_width-w:hat_width, :]
-            
+
         elif x >= 0 and y < 0:
             h = hat_height + y
             w = hat_width - max(0, x+hat_width-self.width)
             frame[0:0+h, x:x+w, :] = frame[0:0+h, x:x+w, :] * ~mask_rgb_boolean[hat_height-h:hat_height, 0:w, :] + (santa_hat * mask_rgb_boolean)[hat_height-h:hat_height, 0:w, :]
-        
+
         return frame
 
 
 
 def main(
-    object_detection,
     triton_url,
     model_name,
     stream_ip,
@@ -260,54 +259,43 @@ def main(
 
     p = subprocess.Popen(command, stdin=subprocess.PIPE)
 
-    if object_detection:
-        model = ObjectDetection(
-            model_name=model_name,
-            triton_url=triton_url
-        )
+    model = ObjectDetection(
+        model_name=model_name,
+        triton_url=triton_url
+    )
 
-        annotator = Annotator(
-            model.model.classes,
-            camera_width,
-            camera_height,
-            santa_hat_plugin
-        )
+    annotator = Annotator(
+        model.model.classes,
+        camera_width,
+        camera_height,
+        santa_hat_plugin
+    )
 
-        period = 2
-        tracking_index = 0
+    period = 2
+    tracking_index = 0
 
-        while camera.isOpened():
-            ret, frame = camera.read()
+    while camera.isOpened():
+        ret, frame = camera.read()
 
-            if not ret:
-                print("Frame failed to load...")
-                break
+        if not ret:
+            print("Frame failed to load...")
+            break
 
-            if tracking_index % period == 0:
-                bboxes, confs, indexes = model(frame)
-                tracking_index = 0
+        if tracking_index % period == 0:
+            bboxes, confs, indexes = model(frame)
+            tracking_index = 0
 
-            if bboxes:
-                frame = annotator(frame, bboxes, confs, indexes)
-            tracking_index += 1
+        if bboxes:
+            frame = annotator(frame, bboxes, confs, indexes)
+        tracking_index += 1
 
-            p.stdin.write(frame.tobytes())
+        p.stdin.write(frame.tobytes())
 
-    else:
-        while camera.isOpened():
-            ret, frame = camera.read()
-
-            if not ret:
-                print("Frame failed to load...")
-                break
-
-            p.stdin.write(frame.tobytes())
 
 
 if __name__ == "__main__":
     load_dotenv()
     parser = EnvArgumentParser()
-    parser.add_arg("OBJECT_DETECTION", default=True, type=bool)
     parser.add_arg("TRITON_URL", default="grpc://localhost:8001", type=str)
     parser.add_arg("MODEL_NAME", default="yolov8n", type=str)
     parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
@@ -321,7 +309,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(
-        args.OBJECT_DETECTION,
         args.TRITON_URL,
         args.MODEL_NAME,
         args.STREAM_IP,
