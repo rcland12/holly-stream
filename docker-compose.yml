@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   triton:
     image: rcland12/detection-stream:linux-triton-latest
@@ -10,13 +8,6 @@ services:
     volumes:
       - ./triton:/root/app/triton
     env_file: .env
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     healthcheck:
       test: [ "CMD", "curl", "-i", "-X", "GET", "http://localhost:8000/v2/health/ready" ]
       interval: 10s
