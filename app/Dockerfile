@@ -10,5 +10,11 @@ RUN apt-get update && \
     python3 -m pip install --no-cache-dir opencv-python \
     imutils python-dotenv tritonclient[all]
 
+RUN wget -O install_pivariety_pkgs.sh https://github.com/ArduCAM/Arducam-Pivariety-V4L2-Driver/releases/download/install_script/install_pivariety_pkgs.sh && \
+    chmod +x install_pivariety_pkgs.sh && \
+    ./install_pivariety_pkgs.sh -p libcamera_dev && \
+    ./install_pivariety_pkgs.sh -p libcamera_apps && \
+    rm install_pivariety_pkgs.sh
+
 COPY main.py utilities.py stream.sh entrypoint.sh ./
 CMD ["/bin/bash", "entrypoint.sh"]
