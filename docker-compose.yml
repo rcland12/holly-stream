@@ -13,23 +13,6 @@ services:
       interval: 10s
       timeout: 20s
       retries: 6
-
-  app:
-    image: rcland12/detection-stream:linux-latest
-    build:
-      context: ./app
-    network_mode: host
-    devices:
-      - /dev/video0:/dev/video0
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix
-      - /tmp/argus_socket:/tmp/argus_socket
-      - ./triton:/root/app/triton
-    env_file: .env
-    depends_on:
-      triton:
-        condition: service_healthy
-    restart: unless-stopped
   
   nginx-stream:
     image: rcland12/detection-stream:nginx-latest
