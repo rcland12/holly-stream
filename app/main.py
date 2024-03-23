@@ -275,17 +275,17 @@ class CameraCapture(CameraApp):
 
 
 def main(
-    model_name,
-    triton_url,
-    stream_ip,
-    stream_port,
-    stream_application,
-    stream_key,
-    camera_index,
-    camera_width,
-    camera_height,
-    santa_hat_plugin
-):
+    model_name: str,
+    triton_url: str,
+    stream_ip: str,
+    stream_port: int,
+    stream_application: str,
+    stream_key: str,
+    camera_width: int,
+    camera_height: int,
+    camera_fps: int,
+    santa_hat_plugin: bool
+) -> None:
 
     rtmp_url = "rtmp://{}:{}/{}/{}".format(
         stream_ip,
@@ -357,6 +357,7 @@ if __name__ == "__main__":
     parser.add_arg("CAMERA_INDEX", default=0, type=int)
     parser.add_arg("CAMERA_WIDTH", default=640, type=int)
     parser.add_arg("CAMERA_HEIGHT", default=480, type=int)
+    parser.add_arg("CAMERA_FPS", default=30, type=int)
     parser.add_arg("SANTA_HAT_PLUGIN", default=False, type=bool)
     args = parser.parse_args()
 
@@ -370,5 +371,6 @@ if __name__ == "__main__":
         args.CAMERA_INDEX,
         args.CAMERA_WIDTH,
         args.CAMERA_HEIGHT,
+        args.CAMERA_FPS,
         args.SANTA_HAT_PLUGIN
     )

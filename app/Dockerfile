@@ -47,5 +47,5 @@ RUN git clone https://github.com/raspberrypi/rpicam-apps.git && \
     meson install -C build
 
 ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu
-COPY main.py utilities.py stream.sh entrypoint.sh ./
+COPY main.py stream.sh entrypoint.sh ./
 CMD ["/bin/bash", "entrypoint.sh"]
