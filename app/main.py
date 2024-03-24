@@ -2,16 +2,14 @@ import os
 import cv2
 import torch
 import imutils
-import libcamera
 import subprocess
 import numpy as np
 
 from ast import literal_eval
 from dotenv import load_dotenv
-from libcamera import CameraApp
+from picamera2 import Picamera2
 from urllib.parse import urlparse
-from utilities import EnvArgumentParser
-from typing import Any, List, Tuple, Union, Optional
+from typing import Any, List, Tuple, Union, Optional, Type
 
 
 
@@ -64,7 +62,7 @@ class TritonRemoteModel:
             self.metadata: dict = self.client.get_model_metadata(self.model_name, as_json=True)
             self.config: dict = self.client.get_model_config(self.model_name, as_json=True)["config"]
 
-            def create_input_placeholders() -> typing.List[InferInput]:
+            def create_input_placeholders() -> List[InferInput]:
                 return [
                     InferInput(
                         i['name'],
@@ -82,7 +80,7 @@ class TritonRemoteModel:
             self.metadata: dict = self.client.get_model_metadata(self.model_name)
             self.config: dict = self.client.get_model_config(self.model_name)
 
-            def create_input_placeholders() -> typing.List[InferInput]:
+            def create_input_placeholders() -> List[InferInput]:
                 return [
                     InferInput(
                         i['name'],
@@ -97,7 +95,7 @@ class TritonRemoteModel:
 
         self._create_input_placeholders_fn = create_input_placeholders
         self.model_dims: Tuple[int, int] = self._get_dims()
-        self.classes: Optional[typing.List[str]] = self._get_classes()
+        self.classes: Optional[List[str]] = self._get_classes()
 
     @property
     def runtime(self) -> str:
@@ -112,7 +110,7 @@ class TritonRemoteModel:
             result.append(tensor)
         return result[0] if len(result) == 1 else result
 
-    def _create_inputs(self, *args, **kwargs) -> List[InferInput]:
+    def _create_inputs(self, *args, **kwargs):
         args_len, kwargs_len = len(args), len(kwargs)
         if not args_len and not kwargs_len:
             raise RuntimeError("No inputs provided.")
@@ -249,30 +247,6 @@ class Annotator():
         return frame
 
 
-class CameraCapture(CameraApp):
-    def __init__(self):
-        super().__init__()
-        self.camera: libcamera.Camera = None
-        self.width: int = None
-        self.height: int = None
-
-    def start(self, camera_width: int, camera_height: int, camera_fps: int) -> None:
-        self.camera = self.create_camera()
-        config = self.camera.configuration
-        config.resolution = (camera_width, camera_height)
-        config.fps = camera_fps
-        self.width = camera_width
-        self.height = camera_height
-        self.camera.configuration = config
-        self.camera.start_recording()
-
-    def read(self) -> np.ndarray:
-        stream = self.camera.capture_buffer()
-        data = np.frombuffer(stream.data, dtype=np.uint8)
-        frame = data.reshape((self.height, self.width, 3))
-        return frame
-
-
 
 def main(
     model_name: str,
@@ -294,9 +268,6 @@ def main(
         stream_key
     )
 
-    camera = CameraCapture()
-    camera.start(camera_width, camera_height, camera_fps)
-
     command = [
         'ffmpeg',
         '-y',
@@ -313,8 +284,6 @@ def main(
         rtmp_url
     ]
 
-    p = subprocess.Popen(command, stdin=subprocess.PIPE)
-
     model = ObjectDetection(
         model_name=model_name,
         triton_url=triton_url
@@ -330,18 +299,36 @@ def main(
     period = 10
     tracking_index = 0
 
-    while True:
-        frame = camera.read()
+    camera = Picamera2()
+    camera.configure(camera.create_video_configuration(
+        main={
+            "size": (camera_width, camera_height)
+        }
+    ))
 
-        if tracking_index % period == 0:
-            bboxes, confs, indexes = model(frame)
-            tracking_index = 0
+    process = subprocess.Popen(command, stdin=subprocess.PIPE)
 
-        if bboxes:
-            frame = annotator(frame, bboxes, confs, indexes)
-        tracking_index += 1
+    try:
+        camera.start()
 
-        p.stdin.write(frame.tobytes())
+        while True:
+            frame = camera.capture_array()[:, :, :3]
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+            if tracking_index % period == 0:
+                bboxes, confs, indexes = model(frame)
+                tracking_index = 0
+
+            if bboxes:
+                frame = annotator(frame, bboxes, confs, indexes)
+            tracking_index += 1
+
+            process.stdin.write(frame.tobytes())
+
+    finally:
+        camera.stop()
+        process.stdin.close()
+        process.wait()
 
 
 
@@ -354,7 +341,6 @@ if __name__ == "__main__":
     parser.add_arg("STREAM_PORT", default=1935, type=int)
     parser.add_arg("STREAM_APPLICATION", default="live", type=str)
     parser.add_arg("STREAM_KEY", default="stream", type=str)
-    parser.add_arg("CAMERA_INDEX", default=0, type=int)
     parser.add_arg("CAMERA_WIDTH", default=640, type=int)
     parser.add_arg("CAMERA_HEIGHT", default=480, type=int)
     parser.add_arg("CAMERA_FPS", default=30, type=int)
@@ -368,7 +354,6 @@ if __name__ == "__main__":
         args.STREAM_PORT,
         args.STREAM_APPLICATION,
         args.STREAM_KEY,
-        args.CAMERA_INDEX,
         args.CAMERA_WIDTH,
         args.CAMERA_HEIGHT,
         args.CAMERA_FPS,

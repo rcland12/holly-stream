@@ -1,6 +1,6 @@
 services:
   triton:
-    image: rcland12/detection-stream:linux-triton-latest
+    image: rcland12/detection-stream:raspbian-triton-latest
     build:
       context: ./triton
     network_mode: host
