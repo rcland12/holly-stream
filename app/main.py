@@ -8,6 +8,7 @@ import numpy as np
 from ast import literal_eval
 from dotenv import load_dotenv
 from picamera2 import Picamera2
+from libcamera import Transform
 from urllib.parse import urlparse
 from typing import Any, List, Tuple, Union, Optional, Type
 
@@ -51,7 +52,7 @@ class EnvArgumentParser():
         return self._define_dict(self.dict)
 
 
-class TritonRemoteModel:
+class TritonClient:
     def __init__(self, url: str, model: str):
         parsed_url = urlparse(url)
         if parsed_url.scheme == "grpc":
@@ -101,21 +102,25 @@ class TritonRemoteModel:
     def runtime(self) -> str:
         return self.metadata.get("backend", self.metadata.get("platform"))
 
-    def __call__(self, *args, **kwargs) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
-        inputs = self._create_inputs(*args, **kwargs)
+    def __call__(self, *args) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
+        inputs = self._create_inputs(*args)
         response = self.client.infer(model_name=self.model_name, inputs=inputs)
         result: List[torch.Tensor] = []
         for output in self.metadata['outputs']:
             tensor = torch.tensor(response.as_numpy(output['name']))
             result.append(tensor)
-        return result[0] if len(result) == 1 else result
+        
+        predictions = result[0].tolist()
+        bboxes = [item[:4] for item in predictions]
+        confs = [round(float(item[4]), 2) for item in predictions]
+        indexes = [int(item[5]) for item in predictions]
 
-    def _create_inputs(self, *args, **kwargs):
-        args_len, kwargs_len = len(args), len(kwargs)
-        if not args_len and not kwargs_len:
+        return bboxes, confs, indexes
+
+    def _create_inputs(self, *args):
+        args_len = len(args)
+        if not args_len:
             raise RuntimeError("No inputs provided.")
-        if args_len and kwargs_len:
-            raise RuntimeError("Cannot specify args and kwargs at the same time")
 
         placeholders = self._create_input_placeholders_fn()
 
@@ -124,10 +129,7 @@ class TritonRemoteModel:
                 raise RuntimeError(f"Expected {len(placeholders)} inputs, got {args_len}.")
             for input, value in zip(placeholders, args):
                 input.set_data_from_numpy(value)
-        else:
-            for input in placeholders:
-                value = kwargs[input.name]
-                input.set_data_from_numpy(value)
+
         return placeholders
 
     def _get_classes(self) -> Optional[List[str]]:
@@ -273,24 +275,23 @@ def main(
         '-y',
         '-f', 'rawvideo',
         '-vcodec', 'rawvideo',
-        '-pix_fmt', 'bgr0',
+        '-pix_fmt', 'rgb24',
         '-s', "{}x{}".format(camera_width, camera_height),
         '-r', str(camera_fps),
         '-i', '-',
         '-c:v', 'libx264',
-        '-pix_fmt', 'yuv420p',
         '-preset', 'ultrafast', 
         '-f', 'flv',
         rtmp_url
     ]
 
-    model = ObjectDetection(
-        model_name=model_name,
-        triton_url=triton_url
+    model = TritonClient(
+        model=model_name,
+        url=triton_url
     )
 
     annotator = Annotator(
-        model.model.classes,
+        model.classes,
         camera_width,
         camera_height,
         santa_hat_plugin
@@ -302,8 +303,10 @@ def main(
     camera = Picamera2()
     camera.configure(camera.create_video_configuration(
         main={
-            "size": (camera_width, camera_height)
-        }
+            "size": (camera_width, camera_height),
+            "format": "BGR888"
+        },
+        transform=Transform(hflip=1, vflip=1)
     ))
 
     process = subprocess.Popen(command, stdin=subprocess.PIPE)
@@ -313,7 +316,6 @@ def main(
 
         while True:
             frame = camera.capture_array()[:, :, :3]
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
             if tracking_index % period == 0:
                 bboxes, confs, indexes = model(frame)
@@ -322,13 +324,14 @@ def main(
             if bboxes:
                 frame = annotator(frame, bboxes, confs, indexes)
             tracking_index += 1
-
             process.stdin.write(frame.tobytes())
 
     finally:
         camera.stop()
         process.stdin.close()
         process.wait()
+    
+    return
 
 
 
