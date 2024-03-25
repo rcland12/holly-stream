@@ -1,7 +1,5 @@
 #!/bin/bash
-set -a
 source .env
-set +a
 
 if [[ -z "${DOCKER_USERNAME}" ]]; then
     echo "Set your DOCKER_USERNAME in your .env file"
@@ -19,15 +17,11 @@ if [[ -z "${LATEST_VERSION}" ]]; then
 fi
 
 docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}
-docker images -q rcland12/detection-stream:linux-latest | xargs -I{} docker tag {} rcland12/detection-stream:linux-${LATEST_VERSION}
-docker images -q rcland12/detection-stream:linux-triton-latest | xargs -I{} docker tag {} rcland12/detection-stream:linux-triton-${LATEST_VERSION}
+docker images -q rcland12/detection-stream:raspian-triton-latest | xargs -I{} docker tag {} rcland12/detection-stream:raspian-triton-${LATEST_VERSION}
 docker images -q rcland12/detection-stream:nginx-latest | xargs -I{} docker tag {} rcland12/detection-stream:nginx-${LATEST_VERSION}
-docker push rcland12/detection-stream:linux-${LATEST_VERSION}
-docker push rcland12/detection-stream:linux-triton-${LATEST_VERSION}
+docker push rcland12/detection-stream:raspian-triton-${LATEST_VERSION}
 docker push rcland12/detection-stream:nginx-${LATEST_VERSION}
-docker rmi -f rcland12/detection-stream:linux-${LATEST_VERSION}
-docker rmi -f rcland12/detection-stream:linux-triton-${LATEST_VERSION}
+docker rmi -f rcland12/detection-stream:raspian-triton-${LATEST_VERSION}
 docker rmi -f rcland12/detection-stream:nginx-${LATEST_VERSION}
-docker push rcland12/detection-stream:linux-latest
-docker push rcland12/detection-stream:linux-triton-latest
+docker push rcland12/detection-stream:raspian-triton-latest
 docker push rcland12/detection-stream:nginx-latest

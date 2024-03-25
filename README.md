@@ -4,56 +4,17 @@ This application will ingest your computers camera feed, apply an object detecti
 # Requirements
 
 * Docker and the compose plugin
-* CUDA-enabled GPU
 * At least 4GB of RAM
-* Webcam, at least 720p recommended
+* Camera, at least 720p recommended
 
 # Prerequisites
 There are a couple of recommended and required steps before you can run this application.
 
-## (required) A YOLOv8 or YOLOv5 model
-This application uses a service called Nvidia Trition Inference Server. It uses an object detection model format called TensorRT. THIS MODEL FORMAT IS MACHINE SPECIFIC. If I trained a YOLOv8 model on a Nvidia GeForce GTX 1060 GPU and convert it, it will not work on another GPU architecture. Therefore, you must convert your own model. If you want to use the default YOLOv8 model, you can simply follow the steps below. Otherwise, the next section will explain how to train a custom model with labels of your choice.
-
-### How to convert a YOLOv8n (nano) model to TensorRT format
-
-1. Set up a python environment.
-
-2. Install YOLOv8 requirements:
-    ```bash
-    pip install ultralytics
-    ```
-
-3. Convert the model to ONNX format in a python script:
-
-    ```python
-    from ultralytics import YOLO
-    model = YOLO('yolov8n.pt')
-    model.export(
-        format='onnx',   # export to ONNX
-        half=True,       # FP16 quantization
-        simplify=True    # ONNX model simplification
-    )
-    ```
-    This model should save to `weights/yolov8n.onnx`.
-
-4. Launch the Nvidia TensorRT container and convert the model:
-
-    ```bash
-    docker run -it --rm --gpus all -v ./weights:/models nvcr.io/nvidia/tensorrt:23.12-py3 \
-    trtexec --onnx=/models/yolov8n.onnx --saveEngine=/models/model.plan --fp16 --inputIOFormats=fp16:chw --outputIOFormats=fp16:chw
-    ```
-    This process should take a couple minutes.
-
-5. Move the TensorRT model (`weights/model.plan`) to the triton directory:
-
-    ```bash
-    mv weights/model.plan triton/object_detection/1/
-    ```
-
-Triton should now be ready.
+## (required) A YOLOv8 model
+This application utilizes a service called Nvidia Triton Inference Server, allowing for optimized inferencing. Our project uses an object detection model format called ONNX. A model is already supplied with this repository with the default 80 object for detection (see the [classes](#change-the-default-class-predictor)). You can also supply a custom YOLOv8 model.
 
 ## (optional) Train a custom YOLOv8 model
-Follow these steps if you want to train a model from scratch ([official docs](https://docs.ultralytics.com/)). It is highly recommended to use a CUDA-enabled machine for training. If you already have a trained model in PyTorch format (`.pt`) skip to step 4.
+Follow these steps if you want to train a model from scratch ([official docs](https://docs.ultralytics.com/)). It is highly recommended to use a CUDA-enabled machine for training. If you already have a trained model in PyTorch format (`.pt`) skip to step 5.
 
 1. Gather data. Collect images of the object(s) you want to detect. I created a script at `app/collect_data.py` to make this process easier.
 
@@ -90,21 +51,18 @@ Follow these steps if you want to train a model from scratch ([official docs](ht
     ```
     The model will be saved in the same directory your `best.pt` model is.
 
-6. Launch the Nvidia TensorRT container and convert the model. Move the ONNX model to a directory called `weights/` and run the command below. It will save the TensorRT model (`.plan`) to the same directory.
-    ```bash
-    docker run -it --rm --gpus all -v ./weights:/models nvcr.io/nvidia/tensorrt:23.12-py3 \
-    trtexec --onnx=/models/yolov8n.onnx --saveEngine=/models/model.plan --fp16 --inputIOFormats=fp16:chw --outputIOFormats=fp16:chw
-    ```
-    This process should take a couple minutes.
-
-7. Move the model to the correct location, `holly-stream/triton/object_detection/1/model.plan`.
+7. Move the model to the correct location, `holly-stream/triton/object_detection/1/model.onnx`. You may have to tinker with the config at `holly-stream/triton/object-detection/config.pbtxt` depending on the shape of your model inputs/outputs and corresponding names.
 
 # Installation
 
-Pull the docker images:
+Run the setup script provided. This will install the environment to run the main application.
 ```bash
-docker pull rcland12/detection-stream:linux-latest
-docker pull rcland12/detection-stream:linux-triton-latest
+./app/setup.sh
+```
+
+Pull the Triton image. This service is containerized and only needs Docker to run. If you only plan on live streaming without object detection, you will not need this image.
+```bash
+docker pull rcland12/detection-stream:raspian-triton-latest
 ```
 
 # Deployment
@@ -123,7 +81,7 @@ Pick an option from each list and follow the instructions below to deploy. If yo
 
 ---
 
-You must have a webcam attached to your Linux machine. Create an `.env` file to define parameters you wish to change. If you do not define a parameter it will default to a value given below, but YOU MUST DEFINE AN EMPTY `.env` FILE AT MINIMUM.
+You must have a camera attached to your Raspberry Pi. Create an `.env` file to define parameters that will be used by the streaming service and Triton. If you do not define any parameters it will default to a value given below, but YOU MUST DEFINE AN EMPTY `.env` FILE AT MINIMUM with the variable OBJECT_DETECTION (True/False).
 
 ```bash
 touch .env
@@ -132,30 +90,37 @@ touch .env
 Here is a list of all possible arguments:
 
 ```bash
-OBJECT_DETECTION=True
-CLASSES=[0, 1]
-MODEL_NAME=yolov8n
-MODEL_REPOSITORY=/root/app/triton
+OBJECT_DETECTION="True"
+MODEL_NAME="yolov8n"
+MODEL_DIMS="(640, 640)"
+MODEL_REPOSITORY="/root/app/triton"
+CONFIDENCE_THRESHOLD="0.3"
+IOU_THRESHOLD="0.25"
+CLASSES="[0, 1]"
+
+# Used if your Triton model repo is hosted in s3
 AWS_ACCESS_KEY_ID=<aws_access_key_id>
 AWS_SECRET_ACCESS_KEY=<aws_secret_access_key>
 AWS_DEFAULT_REGION=<aws_default_region>
 
-STREAM_IP=127.0.0.1
-STREAM_PORT=1935
-STREAM_APPLICATION=live
-STREAM_KEY=stream
+STREAM_IP="127.0.0.1"
+STREAM_PORT="1935"
+STREAM_APPLICATION="live"
+STREAM_KEY="stream"
 
-CAMERA_INDEX=0
-CAMERA_WIDTH=1280
-CAMERA_HEIGHT=720
-SANTA_HAT_PLUGIN=False
+CAMERA_WIDTH="1280"
+CAMERA_HEIGHT="720"
+CAMERA_FPS="30"
+SANTA_HAT_PLUGIN="False"
 ```
 
 A few comments about the parameters:
-- The `OBJECT_DETECTION` variable is a boolean to turn that tasks on/off. If you turn it off you simply have a live stream feed.
-- The `CLASSES` variable takes in a list. If you wish to include all possible classes, remove it from the `.env` file. The possible classes for the default model are [listed below](#change-the-default-class-predictor).
+- The `OBJECT_DETECTION` variable is a boolean to turn that tasks on/off. If you turn it off you simply have a live stream feed. This is required.
 - The `MODEL_NAME` variable is the name of the ensemble model in Triton.
-- The `MODEL_REPOSITORY` is the path in the Triton container to the model repository. You can also provide an s3 bucket path for this variable (e.g. `s3://example-s3-models-path/`).
+- The `MODEL_DIMS` variable is the shape of your Yolov8 model inputs (e.g. (1280, 720)) in Python tuple format.
+- The `MODEL_REPOSITORY` is the path in the Triton container to the model repository. You can also provide an s3 bucket path for this variable (e.g. `s3://example-s3-models-path/`). This model repository must have the same structure as the `triton/` directory in this repo.
+- The `CONFIDENCE_THRESHOLD` and `IOU_THRESHOLD` variables are the hyperparameters used in the non-maximum supression algorithm in the postprocess Triton model.
+- The `CLASSES` variable takes in a python list format. If you wish to include all possible classes, remove it from the `.env` file. The possible classes for the default model are [listed below](#change-the-default-class-predictor).
 - If you provide an s3 bucket for `MODEL_REPOSITORY`, you must also provided the `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_DEFAULT_REGION`.
 ---
 - All arguments accept the data type present above. `STREAM_IP` takes a string, `STREAM_PORT` takes an integer, `STREAM_APPLICATION` takes a string, etc.
@@ -171,74 +136,83 @@ Lastly, to receive the stream on the device you picked above you have two option
 2. [Watch the stream through a browser.](#watching-stream-through-web-browser)
 
 ## Watching stream through streaming software
-The client machine you are using must have Docker and the compose plugin. You will now launch a container that will pick up the feed and send it to your streaming software. If you already have Nginx running on port 1935 on your machine you will have to stop that service before you start this one.
-
+The client machine you are using must have Docker and the compose plugin. You will now launch a container that will pick up the feed and send it to your streaming software. If you already have Nginx running on port 1935 on your machine you will have to stop that service before you start this one. Otherwise start this service:
 ```bash
 docker compose up -d nginx-stream
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Linux machine). Run the following docker compose command:
-
+Once the client software is running you can launch the streaming application from the server side (Raspberry Pi):
 ```bash
-docker compose up -d app
+./run.sh
 ```
-
-I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker compose down`.
 
 Lastly, on the client side you can open up your streaming software and find where you can watch a network stream or URL stream, then use the address you set up in the parameters:
 ```bash
-rtmp://0.0.0.0:<STREAM_PORT>/<STREAM_APPLICATION>/<STREAM_KEY>
+rtmp://127.0.0.1:<STREAM_PORT>/<STREAM_APPLICATION>/<STREAM_KEY>
 
 # example
-rtmp://0.0.0.0:1935/live/stream
+rtmp://127.0.0.1:1935/live/stream
+```
+
+If `127.0.0.1` does not work, try `0.0.0.0`.
+
+To stop the running services on the server (Raspberry Pi), run:
+```bash
+./stop.sh
+```
+
+To stop the running services on the client, run:
+```bash
+docker compose down
 ```
 
 ## Watching stream through web browser
-The client machine you are using must have Docker and the compose plugin. You will now launch a container that will start a web server on localhost port 80. If you already have Nginx running on port 1935 on your machine you will have to stop that service before you start this one.
-
+The client machine you are using must have Docker and the compose plugin. You will now launch a container that will start a web server on localhost port 80. If you already have Nginx running on port 1935 on your machine you will have to stop that service before you start this one. Otherwise start this service:
 ```bash
 docker compose up -d nginx-web
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Linux machine). Run the following docker compose command:
-
+Once the client software is running you can launch the streaming application from the server side (Raspberry Pi):
 ```bash
-docker compose up -d linux-stream
+./run.sh
 ```
 
-I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker compose down`.
+Lastly, on the client side navigate to the web address `http://localhost/index.html`. If you plan on serving this stream on a live web server, following the instructions in the next section.
 
-Lastly, on the client side navigate to the web address `http://localhost/stream.html`. If you plan on serving this stream on a live web server, following the instructions in the next section.
+To stop the running services on the server (Raspberry Pi), run:
+```bash
+./stop.sh
+```
+
+To stop the running services on the client, run:
+```bash
+docker compose down
+```
 
 ## Streaming the feed to a web server
 If you are streaming to a remote web server most of the steps will be the same. You will clone the repo on your web server. Before you launch the service you will have to make a few changes.
 
-File `nginx/stream/stream.html`:
+File `nginx/stream/index.html`:
 - Everywhere there is a `http://localhost`, replace it with your domain name: `https://website.com`.
 - On line 20, replace the last part of the src, `stream.m3u8`, with your stream key: `<stream_key>.m3u8`. This prevents people on your same network from streaming a video to your website.
 
 File `nginx/nginx-web/nginx.conf`:
 - Whitelist your IP address by first finding your home IP address (you can do so [here](https://whatismyipaddress.com/)).
-- Under the rtmp block, aroud lines 51-54 add another line with `allow publish <your_ipv4>;`. Don't forget the semicolon.
-- Add your domain name on line 36. Replace `server_name localhost;` with `server_name website.com;`. Don't forget the semicolon.
-- If for some reason you want to change the application name edit line 57 by replacing `application live` with `application <application_name>`. Then remember to also make that change in your `.env` file for the variable STREAM_APPLICATION.
+- Under the rtmp block, aroud lines 40-43 add another line with `allow publish <your_ipv4>;`. Don't forget the semicolon.
+- Add your domain name on line 27. Replace `server_name localhost;` with `server_name website.com;`. Don't forget the semicolon.
+- If for some reason you want to change the application name edit line 46 by replacing `application live` with `application <application_name>`. Then remember to also make that change in your `.env` file for the variable STREAM_APPLICATION.
 
 Now you can launch this service on your web server:
-
 ```bash
 docker compose run -d nginx-web
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Linux machine). Run the following docker compose command:
-
+Once the client software is running you can launch the streaming application from the server side (Raspberry Pi):
 ```bash
-docker compose up -d linux-stream
+./run.sh
 ```
 
-I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker compose down`.
-
-Lastly, you will be able to access the stream at `https://website.com/stream.html`. You can of course make changes to this and create a different route for this stream, but this is the minimum requirements.
-
+Lastly, you will be able to access the stream at `https://website.com/index.html`. You can of course make changes to this and create a different route for this stream, but this is the minimum requirements.
 
 ## Change the default class predictor
 By default this application detects people and dogs (I made this for a home security system). To change or add classes for detection, add a CLASSES environmental variable to your `.env` file, if you don't already have it. Remove it to inference on all classes below. Otherwise, use a list to add classes you want to inference on. Such as `CLASSES=[0, 16, 17, 54, 67]`.

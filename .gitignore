@@ -6,6 +6,9 @@
 stream-*.ts
 *.plan
 data/
+.process.pid
+nohup.out
+.stream_env
 
 ### Linux ###
 *~

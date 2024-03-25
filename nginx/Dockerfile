@@ -1,5 +1,6 @@
 FROM ubuntu:20.04
 ARG APPDIR=/root/app
+ARG NGINX_USER=www-data
 
 RUN apt-get update && \
     apt dist-upgrade -y && \
@@ -24,8 +25,8 @@ RUN git clone https://github.com/sergey-dryabzhinsky/nginx-rtmp-module.git && \
     --error-log-path=/var/log/nginx/error.log \
     --pid-path=/var/run/nginx.pid \
     --lock-path=/var/run/nginx.lock \
-    --user=www-data \
-    --group=www-data \
+    --user=${NGINX_USER} \
+    --group=${NGINX_USER} \
     --build=Ubuntu \
     --with-select_module \
     --with-poll_module \
@@ -72,5 +73,8 @@ RUN git clone https://github.com/sergey-dryabzhinsky/nginx-rtmp-module.git && \
     make -j $(nproc) && \
     make install && \
     mkdir /var/cache/nginx
+
+COPY --chown=${NGINX_USER}:${NGINX_USER} ./stream/ /var/www/html/stream/
+COPY --chown=root:root ./nginx-web/nginx.conf /etc/nginx/nginx.conf
 
 CMD ["nginx", "-g", "daemon off;"]
