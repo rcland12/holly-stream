@@ -40,30 +40,35 @@ elif [ "${OBJECT_DETECTION}" == "False" ]; then
     if [ -z $STREAM_PORT ]; then echo "You did not define STREAM_PORT. It will default to 1935." && STREAM_PORT=1935; fi
     if [ -z $STREAM_APPLICATION ]; then echo "You did not define STREAM_APPLICATION. It will default to 'live'. If you are using Nginx as the RTMP server, this has to match the application name in the config." && STREAM_APPLICATION="live"; fi
     if [ -z $STREAM_KEY ]; then echo "You did not define STREAM_KEY. It will default to 'stream'. If you are using HLS and a website to stream, this must match the name of your .m3u8 file." && STREAM_KEY="stream"; fi
+    
+    MODEL_DIMS="$CAMERA_WIDTH"x"$CAMERA_HEIGHT"
 
-    nohup \
-    libcamera-vid \
-        --nopreview \
-        --inline \
-        --timeout 0 \
-        --framerate $CAMERA_FPS \
-        --width $CAMERA_WIDTH \
-        --height $CAMERA_HEIGHT \
-        --rotation 180 \
-        --listen -o - | \
-    ffmpeg \
-        -i - \
-        -nostdin \
-        -profile:v high \
-        -pix_fmt yuvj420p \
-        -level:v 4.1 \
-        -preset ultrafast \
-        -tune zerolatency \
-        -vcodec libx264 \
-        -r $CAMERA_FPS \
-        -s "$CAMERA_WIDTH"x"$CAMERA_HEIGHT" \
-        -f flv rtmp://$STREAM_IP:$STREAM_PORT/$STREAM_APPLICATION/$STREAM_KEY &
+    stream_command=$(cat <<-EOF
+        libcamera-vid \
+            --nopreview \
+            --inline \
+            --timeout 0 \
+            --framerate $CAMERA_FPS \
+            --width $CAMERA_WIDTH \
+            --height $CAMERA_HEIGHT \
+            --rotation 180 \
+            --listen -o - | \
+        ffmpeg \
+            -i - \
+            -nostdin \
+            -profile:v high \
+            -pix_fmt yuvj420p \
+            -level:v 4.1 \
+            -preset ultrafast \
+            -tune zerolatency \
+            -vcodec libx264 \
+            -r $CAMERA_FPS \
+            -s $MODEL_DIMS \
+            -f flv rtmp://$STREAM_IP:$STREAM_PORT/$STREAM_APPLICATION/$STREAM_KEY
+EOF
+)
 
+    nohup sh -c "$stream_command" &
     echo $! > .process.pid
 
 else
