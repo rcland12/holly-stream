@@ -2,7 +2,7 @@ name: Build and Push Image to Docker Hub
 
 on:
   push:
-    branches: [ linux ]
+    branches: [ raspbian ]
 
 jobs:
   triton-image:
