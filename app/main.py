@@ -308,6 +308,7 @@ def main(
         },
         transform=Transform(hflip=1, vflip=1)
     ))
+    camera.controls.Brightness = 0.2
 
     process = subprocess.Popen(command, stdin=subprocess.PIPE)
 

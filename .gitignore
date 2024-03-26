@@ -7,7 +7,7 @@ stream-*.ts
 *.plan
 data/
 .process.pid
-nohup.out
+.log.out
 .stream_env
 
 ### Linux ###

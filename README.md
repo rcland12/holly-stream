@@ -6,6 +6,7 @@ This application will ingest your computers camera feed, apply an object detecti
 * Docker and the compose plugin
 * At least 4GB of RAM
 * Camera, at least 720p recommended
+    * Your camera might require a driver installation before it can be used. If you have an ArduCam (I tested this on a IMX519 16MP ArduCam) the driver installation and camera packages can be installed [here](https://docs.arducam.com/Raspberry-Pi-Camera/Native-camera/Quick-Start-Guide/).
 
 # Prerequisites
 There are a couple of recommended and required steps before you can run this application.

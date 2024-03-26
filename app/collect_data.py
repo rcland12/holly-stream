@@ -91,6 +91,7 @@ def main(
         transform=Transform(hflip=1, vflip=1),
         controls={"FrameDurationLimits": (duration, duration)}
     ))
+    camera.controls.Brightness = 0.2
     camera.start()
 
     try:
