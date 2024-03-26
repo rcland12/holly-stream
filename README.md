@@ -4,9 +4,10 @@ This application will ingest your computers camera feed, apply an object detecti
 # Requirements
 
 * Docker and the compose plugin
-* CUDA-enabled GPU
-* At least 4GB of RAM
 * Webcam, at least 720p recommended
+* At least 4GB of RAM
+* CUDA-enabled GPU
+    * If your machine does not have a GPU, you can still run Triton but you will have to use an ONNX model and modify some of the `config.pbtxt` files throughout. If you are training a custom model it is highly encouraged to use a CUDA-enabled machine with a GPU. There are options such as Google Colab to train models with GPUs if need be.
 
 # Prerequisites
 There are a couple of recommended and required steps before you can run this application.
@@ -34,7 +35,7 @@ This application uses a service called Nvidia Trition Inference Server. It uses 
         simplify=True    # ONNX model simplification
     )
     ```
-    This model should save to `weights/yolov8n.onnx`.
+    This model should save to `weights/yolov8n.onnx`. If you do not a GPU that is CUDA-enabled, remove the `half` argument. FP16 format is only supported for GPU. You will use this model to run in Triton, so skip the next step.
 
 4. Launch the Nvidia TensorRT container and convert the model:
 
@@ -133,7 +134,7 @@ Here is a list of all possible arguments:
 
 ```bash
 OBJECT_DETECTION=True
-CLASSES=[0, 1]
+CLASSES=None
 MODEL_NAME=yolov8n
 MODEL_REPOSITORY=/root/app/triton
 AWS_ACCESS_KEY_ID=<aws_access_key_id>
@@ -148,6 +149,8 @@ STREAM_KEY=stream
 CAMERA_INDEX=0
 CAMERA_WIDTH=1280
 CAMERA_HEIGHT=720
+CAMERA_FPS=30
+CAMERA_AUDIO=False
 SANTA_HAT_PLUGIN=False
 ```
 
@@ -163,6 +166,7 @@ A few comments about the parameters:
 - If you are streaming the feed to another device on your local network, set the `STREAM_IP` to the IPV4 address of that device. To find the IP address of a device on linux machine run `ip a` and look for it under `wl01` or something similar. On a windows machine open Windows Powershell and run `ipconfig` and look for `IP address`.
 - If you are streaming the feed to another server set the `STREAM_IP` to the public IP address for that server. Also make sure you expose port 1935 on the firewall and router if necessary for the server your sending the stream to.
 ---
+- The variable `CAMERA_AUDIO` is a boolean to set audio on/off if your camera also has a microphone. This variable is required if `OBJECT_DETECTION` is set to False, otherwise it will do nothing.
 - The variable `SANTA_HAT_PLUGIN`, if set to True, will not add a bounding box, but a santa hat to the object with the highest probability score. I use this parameter when detecting my dog using a custom model, especially around Christmas!
 
 Lastly, to receive the stream on the device you picked above you have two options:

@@ -9,5 +9,5 @@ RUN apt-get update \
     && python3 -m pip install --no-cache-dir opencv-python \
     imutils python-dotenv tritonclient[all]
 
-COPY main.py utilities.py stream.sh entrypoint.sh ./
+COPY main.py stream.sh entrypoint.sh ./
 CMD ["/bin/bash", "entrypoint.sh"]
