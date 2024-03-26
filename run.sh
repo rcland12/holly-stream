@@ -14,10 +14,10 @@ if [ "${OBJECT_DETECTION}" == "True" ]; then
         response=$(curl --write-out "%{http_code}" --silent --output /dev/null "$url")
 
         if [ $response -eq 200 ]; then
-            echo "Triton is healthy, starting holly-stream."
+            echo "Triton is starting (STATUS: HEALTHY). Success!"
             break
         else
-            echo "Triton is not healthy yet, trying again in $INTERVAL seconds. Attempt $ATTEMPT/$RETRIES"
+            echo "Triton is starting (STATUS: UNHEALTHY). Trying again in $INTERVAL seconds. Attempt $ATTEMPT/$RETRIES"
             ATTEMPT=$((ATTEMPT + 1))
             sleep $INTERVAL
         fi
@@ -28,7 +28,8 @@ if [ "${OBJECT_DETECTION}" == "True" ]; then
         exit 120
     fi
 
-    nohup $PWD/.stream_env/bin/python3 app/main.py &
+    echo "Holly-stream started."
+    nohup $PWD/.stream_env/bin/python3 app/main.py > .log.out &
     echo $! > .process.pid
 
 elif [ "${OBJECT_DETECTION}" == "False" ]; then
@@ -52,6 +53,7 @@ elif [ "${OBJECT_DETECTION}" == "False" ]; then
             --width $CAMERA_WIDTH \
             --height $CAMERA_HEIGHT \
             --rotation 180 \
+            --brightness 0.2 \
             --listen -o - | \
         ffmpeg \
             -i - \
@@ -68,8 +70,8 @@ elif [ "${OBJECT_DETECTION}" == "False" ]; then
 EOF
 )
 
-    nohup sh -c "$stream_command" &
-    echo $! > .process.pid
+    echo "Holly-stream started."
+    nohup sh -c "$stream_command" > .log.out &
 
 else
     echo "Invalid input for OBJECT_DETECTION. Expecting True or False; received ${OBJECT_DETECTION}."
