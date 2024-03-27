@@ -8,7 +8,7 @@ import numpy as np
 from ast import literal_eval
 from dotenv import load_dotenv
 from urllib.parse import urlparse
-from typing import Any, List, Tuple, Union, Optional, Type
+from typing import Any, Dict, List, Tuple, Union, Optional, Type
 
 
 
