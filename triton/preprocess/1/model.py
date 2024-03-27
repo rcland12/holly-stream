@@ -1,23 +1,25 @@
 import os
 import cv2
 import json
+import numpy as np
 import triton_python_backend_utils as pb_utils
 
 from ast import literal_eval
 from dotenv import load_dotenv
+from typing import Any, Dict, List, Tuple, Type
 
 
 
 class EnvArgumentParser():
     def __init__(self):
-        self.dict = {}
+        self.dict: Dict[str, Any] = {}
 
     class _define_dict(dict):
         __getattr__ = dict.get
         __setattr__ = dict.__setitem__
         __delattr__ = dict.__delitem__
 
-    def add_arg(self, variable, default=None, type=str):
+    def add_arg(self, variable: str, default: Any = None, type: Type = str) -> None:
         env = os.environ.get(variable)
 
         if env is None:
@@ -28,7 +30,7 @@ class EnvArgumentParser():
         self.dict[variable] = value
 
     @staticmethod
-    def _cast_type(arg, d_type):
+    def _cast_type(arg: str, d_type: Type) -> Any:
         if d_type == list or d_type == tuple or d_type == bool:
             try:
                 cast_value = literal_eval(arg)
@@ -42,15 +44,15 @@ class EnvArgumentParser():
             except (ValueError, SyntaxError):
                 raise ValueError(f"Argument {arg} does not match given data type or is not supported.")
     
-    def parse_args(self):
+    def parse_args(self) -> '_define_dict':
         return self._define_dict(self.dict)
 
 
 def letterbox(
-    image=None,
-    new_shape=(640, 640),
-    output_type='float32'
-):
+    image: np.ndarray,
+    new_shape: Tuple[int, int] = (640, 640),
+    output_type: str = 'float32'
+) -> np.ndarray:
     shape = image.shape[:2]
     r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
 
@@ -72,9 +74,8 @@ def letterbox(
     return image.transpose((2, 0, 1))[::-1].astype(output_type)
 
 
-
 class TritonPythonModel:
-    def initialize(self, args):
+    def initialize(self, args: Dict[str, Any]) -> None:
         model_config = json.loads(args["model_config"])
         OUTPUT_0_config = pb_utils.get_output_config_by_name(model_config, "OUTPUT_0")
 
@@ -86,7 +87,7 @@ class TritonPythonModel:
         self.model_dims = args.MODEL_DIMS
         self.output_type = pb_utils.triton_string_to_numpy(OUTPUT_0_config["data_type"])
 
-    def execute(self, requests):
+    def execute(self, requests: List[pb_utils.InferenceRequest]) -> List[pb_utils.InferenceResponse]:
         responses = []
         for request in requests:
             img = letterbox(
@@ -109,5 +110,5 @@ class TritonPythonModel:
           
         return responses
 
-    def finalize(self):
+    def finalize(self) -> None:
         print('Cleaning up preprocess model...')
