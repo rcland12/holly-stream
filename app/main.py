@@ -1,30 +1,68 @@
 import os
 import cv2
 import torch
-import typing
 import imutils
 import subprocess
 import numpy as np
 
+from ast import literal_eval
 from nanocamera import Camera
 from dotenv import load_dotenv
 from urllib.parse import urlparse
-from utilities import EnvArgumentParser
+from typing import Any, List, Tuple, Union, Optional, Type
 
 
 
-class TritonRemoteModel:
+class EnvArgumentParser():
+    def __init__(self):
+        self.dict: Dict[str, Any] = {}
+
+    class _define_dict(dict):
+        __getattr__ = dict.get
+        __setattr__ = dict.__setitem__
+        __delattr__ = dict.__delitem__
+
+    def add_arg(self, variable: str, default: Any = None, type: Type = str) -> None:
+        env = os.environ.get(variable)
+
+        if env is None:
+            value = default
+        else:
+            value = self._cast_type(env, type)
+
+        self.dict[variable] = value
+
+    @staticmethod
+    def _cast_type(arg: str, d_type: Type) -> Any:
+        if d_type == list or d_type == tuple or d_type == bool:
+            try:
+                cast_value = literal_eval(arg)
+                return cast_value
+            except (ValueError, SyntaxError):
+                raise ValueError(f"Argument {arg} does not match given data type or is not supported.")
+        else:
+            try:
+                cast_value = d_type(arg)
+                return cast_value
+            except (ValueError, SyntaxError):
+                raise ValueError(f"Argument {arg} does not match given data type or is not supported.")
+    
+    def parse_args(self) -> '_define_dict':
+        return self._define_dict(self.dict)
+
+
+class TritonClient:
     def __init__(self, url: str, model: str):
         parsed_url = urlparse(url)
         if parsed_url.scheme == "grpc":
             from tritonclient.grpc import InferenceServerClient, InferInput
 
-            self.client = InferenceServerClient(parsed_url.netloc)
-            self.model_name = model
-            self.metadata = self.client.get_model_metadata(self.model_name, as_json=True)
-            self.config = self.client.get_model_config(self.model_name, as_json=True)["config"]
+            self.client: InferenceServerClient = InferenceServerClient(parsed_url.netloc)
+            self.model_name: str = model
+            self.metadata: dict = self.client.get_model_metadata(self.model_name, as_json=True)
+            self.config: dict = self.client.get_model_config(self.model_name, as_json=True)["config"]
 
-            def create_input_placeholders() -> typing.List[InferInput]:
+            def create_input_placeholders() -> List[InferInput]:
                 return [
                     InferInput(
                         i['name'],
@@ -37,12 +75,12 @@ class TritonRemoteModel:
         elif parsed_url.scheme == "http":
             from tritonclient.http import InferenceServerClient, InferInput
 
-            self.client = InferenceServerClient(parsed_url.netloc)
-            self.model_name = model
-            self.metadata = self.client.get_model_metadata(self.model_name)
-            self.config = self.client.get_model_config(self.model_name)
+            self.client: InferenceServerClient = InferenceServerClient(parsed_url.netloc)
+            self.model_name: str = model
+            self.metadata: dict = self.client.get_model_metadata(self.model_name)
+            self.config: dict = self.client.get_model_config(self.model_name)
 
-            def create_input_placeholders() -> typing.List[InferInput]:
+            def create_input_placeholders() -> List[InferInput]:
                 return [
                     InferInput(
                         i['name'],
@@ -56,28 +94,32 @@ class TritonRemoteModel:
             raise "Unsupported protocol. Use HTTP or GRPC."
 
         self._create_input_placeholders_fn = create_input_placeholders
-        self.model_dims = self._get_dims()
-        self.classes = self._get_classes()
+        self.model_dims: Tuple[int, int] = self._get_dims()
+        self.classes: Optional[List[str]] = self._get_classes()
 
     @property
-    def runtime(self):
+    def runtime(self) -> str:
         return self.metadata.get("backend", self.metadata.get("platform"))
 
-    def __call__(self, *args, **kwargs) -> typing.Union[torch.Tensor, typing.Tuple[torch.Tensor, ...]]:
-        inputs = self._create_inputs(*args, **kwargs)
+    def __call__(self, *args) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
+        inputs = self._create_inputs(*args)
         response = self.client.infer(model_name=self.model_name, inputs=inputs)
-        result = []
+        result: List[torch.Tensor] = []
         for output in self.metadata['outputs']:
             tensor = torch.tensor(response.as_numpy(output['name']))
             result.append(tensor)
-        return result[0] if len(result) == 1 else result
+        
+        predictions = result[0].tolist()
+        bboxes = [item[:4] for item in predictions]
+        confs = [round(float(item[4]), 2) for item in predictions]
+        indexes = [int(item[5]) for item in predictions]
 
-    def _create_inputs(self, *args, **kwargs):
-        args_len, kwargs_len = len(args), len(kwargs)
-        if not args_len and not kwargs_len:
+        return bboxes, confs, indexes
+
+    def _create_inputs(self, *args):
+        args_len = len(args)
+        if not args_len:
             raise RuntimeError("No inputs provided.")
-        if args_len and kwargs_len:
-            raise RuntimeError("Cannot specify args and kwargs at the same time")
 
         placeholders = self._create_input_placeholders_fn()
 
@@ -86,13 +128,10 @@ class TritonRemoteModel:
                 raise RuntimeError(f"Expected {len(placeholders)} inputs, got {args_len}.")
             for input, value in zip(placeholders, args):
                 input.set_data_from_numpy(value)
-        else:
-            for input in placeholders:
-                value = kwargs[input.name]
-                input.set_data_from_numpy(value)
+
         return placeholders
 
-    def _get_classes(self):
+    def _get_classes(self) -> Optional[List[str]]:
         label_filename = self.config["output"][0]["label_filename"]
         docker_file_path = f"/root/app/triton/{self.model_name}/{label_filename}"
         jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{self.model_name}/{label_filename}")
@@ -108,7 +147,7 @@ class TritonRemoteModel:
 
         return classes
 
-    def _get_dims(self):
+    def _get_dims(self) -> Tuple[int, int]:
         try:
             model_dims = tuple(self.config["input"][0]["dims"][2:4])
             return tuple(map(int, model_dims))
@@ -116,32 +155,8 @@ class TritonRemoteModel:
             return (640, 640)
 
 
-class ObjectDetection():
-    def __init__(
-            self,
-            model_name,
-            triton_url
-        ):
- 
-        try:
-            self.model = TritonRemoteModel(url=triton_url, model=model_name)
-        except ConnectionError as e:
-            raise f"Failed to connect to Triton: {e}"
-
-    def __call__(self, frame):
-        predictions = self.model(
-            frame
-        ).tolist()
-
-        bboxes = [item[:4] for item in predictions]
-        confs = [round(float(item[4]), 2) for item in predictions]
-        indexes = [int(item[5]) for item in predictions]
-
-        return bboxes, confs, indexes
-
-
 class Annotator():
-    def __init__(self, classes, width=1280, height=720, santa_hat_plugin_bool=False):
+    def __init__(self, classes: List[str], width: int = 1280, height: int = 720, santa_hat_plugin_bool: bool = False):
         self.width = width
         self.height = height
         self.classes = classes
@@ -150,7 +165,7 @@ class Annotator():
         self.santa_hat_mask = cv2.imread("images/santa_hat_mask.png")
         self.santa_hat_plugin_bool = santa_hat_plugin_bool
 
-    def __call__(self, frame, bboxes, confs, indexes):
+    def __call__(self, frame: np.ndarray, bboxes: List[List[float]], confs: List[float], indexes: List[int]) -> np.ndarray:
         if not self.santa_hat_plugin_bool:
             for i in range(len(bboxes)):
                 xmin, ymin, xmax, ymax = [int(j) for j in bboxes[i]]
@@ -181,7 +196,7 @@ class Annotator():
             max_index = max(range(len(confs)), key=confs.__getitem__)
             return self._overlay_obj(frame, bboxes[max_index].copy())
 
-    def _overlay_obj(self, frame, bbox):
+    def _overlay_obj(self, frame: np.ndarray, bbox: List[float]) -> np.ndarray:
         bbox = [int(i * scalar) for i, scalar in zip(bbox, [self.width, self.height, self.width, self.height])]
         x, y = bbox[0], bbox[1] + 20
 
@@ -214,21 +229,20 @@ class Annotator():
             frame[0:0+h, x:x+w, :] = frame[0:0+h, x:x+w, :] * ~mask_rgb_boolean[hat_height-h:hat_height, 0:w, :] + (santa_hat * mask_rgb_boolean)[hat_height-h:hat_height, 0:w, :]
         
         return frame
-    
 
 
 def main(
-    triton_url,
-    model_name,
-    stream_ip,
-    stream_port,
-    stream_application,
-    stream_key,
-    camera_index,
-    camera_width,
-    camera_height,
-    camera_fps,
-    santa_hat_plugin
+    triton_url: str,
+    model_name: str,
+    stream_ip: str,
+    stream_port: int,
+    stream_application: str,
+    stream_key: str,
+    camera_index: int,
+    camera_width: int,
+    camera_height: int,
+    camera_fps: int,
+    santa_hat_plugin: bool
 ):
 
     rtmp_url = "rtmp://{}:{}/{}/{}".format(
@@ -236,14 +250,6 @@ def main(
         stream_port,
         stream_application,
         stream_key
-    )
-
-    camera = Camera(
-        device_id=camera_index,
-        flip=0,
-        width=camera_width,
-        height=camera_height,
-        fps=camera_fps
     )
 
     command = [
@@ -262,38 +268,49 @@ def main(
         rtmp_url
     ]
 
-    p = subprocess.Popen(command, stdin=subprocess.PIPE)
-
-    model = ObjectDetection(
-        model_name=model_name,
-        triton_url=triton_url
+    model = TritonClient(
+        triton_url,
+        model_name
     )
 
     annotator = Annotator(
-        model.model.classes,
+        model.classes,
         camera_width,
         camera_height,
         santa_hat_plugin
     )
 
+    camera = Camera(
+        device_id=camera_index,
+        flip=0,
+        width=camera_width,
+        height=camera_height,
+        fps=camera_fps
+    )
+
     period = 10
     tracking_index = 0
+    process = subprocess.Popen(command, stdin=subprocess.PIPE)
 
-    while camera.isReady():
-        frame = camera.read()
+    try:
+        while camera.isReady():
+            frame = camera.read()
 
-        if tracking_index % period == 0:
-            bboxes, confs, indexes = model(frame)
-            tracking_index = 0
+            if tracking_index % period == 0:
+                bboxes, confs, indexes = model(frame)
+                tracking_index = 0
+            
+            if bboxes:
+                frame = annotator(frame, bboxes, confs, indexes)
+            tracking_index += 1
+
+            process.stdin.write(frame.tobytes())
         
-        if bboxes:
-            frame = annotator(frame, bboxes, confs, indexes)
-        tracking_index += 1
+    finally:
+        camera.release()
+    
+    return
 
-        p.stdin.write(frame.tobytes())
-
-    camera.release()
-    del camera
 
 
 if __name__ == "__main__":

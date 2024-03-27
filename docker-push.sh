@@ -1,7 +1,7 @@
 #!/bin/bash
-set -a
+
 source .env
-set +a
+
 
 if [[ -z "${DOCKER_USERNAME}" ]]; then
     echo "Set your DOCKER_USERNAME in your .env file"
