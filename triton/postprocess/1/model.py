@@ -7,10 +7,11 @@ import triton_python_backend_utils as pb_utils
 from ast import literal_eval
 from dotenv import load_dotenv
 from torchvision.ops import nms
+from typing import Any, Dict, List, Tuple, Optional, Type
 
 
 
-class EnvArgumentParser():
+class EnvArgumentParser:
     def __init__(self):
         self.dict = {}
 
@@ -48,7 +49,7 @@ class EnvArgumentParser():
         return self._define_dict(self.dict)
 
 
-def xywh2xyxy(x):
+def xywh2xyxy(x: torch.Tensor) -> torch.Tensor:
     assert x.shape[-1] == 4, f"input shape last dimension expected 4 but input shape is {x.shape}"
     y = torch.empty_like(x) if isinstance(x, torch.Tensor) else np.empty_like(x)
     dw = x[..., 2] / 2
@@ -61,15 +62,15 @@ def xywh2xyxy(x):
 
 
 def non_max_suppression(
-    prediction,
-    img0_shape=(640, 480),
-    img1_shape=(640, 640),
-    conf_thres=0.25,
-    iou_thres=0.45,
-    classes=None,
-    scale=True,
-    normalize=False
-):
+    prediction: torch.Tensor,
+    img0_shape: Tuple[int, int] = (1280, 720),
+    img1_shape: Tuple[int, int] = (640, 640),
+    conf_thres: float = 0.25,
+    iou_thres: float = 0.45,
+    classes: Optional[List[int]] = None,
+    scale: bool = True,
+    normalize: bool = False
+) -> np.ndarray:
     bs = prediction.shape[0]
     nc = prediction.shape[1] - 4
     nm = prediction.shape[1] - nc - 4
@@ -133,13 +134,12 @@ def non_max_suppression(
     return output.numpy()
 
 
-
 class TritonPythonModel:
-    def initialize(self, args):
+    def initialize(self, args: Dict[str, Any]) -> None:
         load_dotenv()
         parser = EnvArgumentParser()
-        parser.add_arg("CAMERA_WIDTH", default=640, type=int)
-        parser.add_arg("CAMERA_HEIGHT", default=480, type=int)
+        parser.add_arg("CAMERA_WIDTH", default=1280, type=int)
+        parser.add_arg("CAMERA_HEIGHT", default=720, type=int)
         parser.add_arg("MODEL_DIMS", default=(640, 640), type=tuple)
         parser.add_arg("CONFIDENCE_THRESHOLD", default=0.3, type=float)
         parser.add_arg("IOU_THRESHOLD", default=0.25, type=float)
@@ -155,7 +155,7 @@ class TritonPythonModel:
         self.classes = args.CLASSES
         self.santa_hat_plugin = args.SANTA_HAT_PLUGIN
  
-    def execute(self, requests):
+    def execute(self, requests: List[pb_utils.InferenceRequest]) -> List[pb_utils.InferenceResponse]:
         responses = []
         for request in requests:
             results = non_max_suppression(
@@ -178,5 +178,5 @@ class TritonPythonModel:
 
         return responses
 
-    def finalize(self):
+    def finalize(self) -> None:
         print('Cleaning up postprocess model...')

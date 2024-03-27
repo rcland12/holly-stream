@@ -18,11 +18,11 @@ if [[ -z "${LATEST_VERSION}" ]]; then
 fi
 
 docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}
-docker images -q rcland12/detection-stream:raspian-triton-latest | xargs -I{} docker tag {} rcland12/detection-stream:raspian-triton-${LATEST_VERSION}
+docker images -q rcland12/detection-stream:raspbian-triton-latest | xargs -I{} docker tag {} rcland12/detection-stream:raspbian-triton-${LATEST_VERSION}
 docker images -q rcland12/detection-stream:nginx-latest | xargs -I{} docker tag {} rcland12/detection-stream:nginx-${LATEST_VERSION}
-docker push rcland12/detection-stream:raspian-triton-${LATEST_VERSION}
+docker push rcland12/detection-stream:raspbian-triton-${LATEST_VERSION}
 docker push rcland12/detection-stream:nginx-${LATEST_VERSION}
-docker rmi -f rcland12/detection-stream:raspian-triton-${LATEST_VERSION}
+docker rmi -f rcland12/detection-stream:raspbian-triton-${LATEST_VERSION}
 docker rmi -f rcland12/detection-stream:nginx-${LATEST_VERSION}
-docker push rcland12/detection-stream:raspian-triton-latest
+docker push rcland12/detection-stream:raspbian-triton-latest
 docker push rcland12/detection-stream:nginx-latest
