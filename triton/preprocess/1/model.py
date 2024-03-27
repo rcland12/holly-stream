@@ -7,6 +7,7 @@ import triton_python_backend_utils as pb_utils
 from ast import literal_eval
 from dotenv import load_dotenv
 from typing import Any, Dict, List, Tuple, Optional, Type
+from c_python_backend_utils import InferenceRequest, InferenceResponse
 
 
 
@@ -88,7 +89,7 @@ class TritonPythonModel:
         self.model_dims = args.MODEL_DIMS
         self.output_type = pb_utils.triton_string_to_numpy(OUTPUT_0_config["data_type"])
 
-    def execute(self, requests: List[pb_utils.InferenceRequest]) -> List[pb_utils.InferenceResponse]:
+    def execute(self, requests: List[InferenceRequest]) -> List[InferenceResponse]:
         responses = []
         for request in requests:
             image = letterbox(

@@ -8,6 +8,7 @@ from ast import literal_eval
 from dotenv import load_dotenv
 from torchvision.ops import nms
 from typing import Any, Dict, List, Tuple, Optional, Type
+from c_python_backend_utils import InferenceRequest, InferenceResponse
 
 
 
@@ -155,7 +156,7 @@ class TritonPythonModel:
         self.classes = args.CLASSES
         self.santa_hat_plugin = args.SANTA_HAT_PLUGIN
  
-    def execute(self, requests: List[pb_utils.InferenceRequest]) -> List[pb_utils.InferenceResponse]:
+    def execute(self, requests: List[InferenceRequest]) -> List[InferenceResponse]:
         responses = []
         for request in requests:
             results = non_max_suppression(
