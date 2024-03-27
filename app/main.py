@@ -156,23 +156,6 @@ class TritonClient:
             return (640, 640)
 
 
-class ObjectDetection():
-    def __init__(self, model_name: str, triton_url: str):
- 
-        try:
-            self.model = TritonRemoteModel(url=triton_url, model=model_name)
-        except ConnectionError as e:
-            raise f"Failed to connect to Triton: {e}"
-
-    def __call__(self, frame: np.ndarray) -> Tuple[List[List[float]], List[float], List[int]]:
-        predictions = self.model(frame).tolist()
-        bboxes = [item[:4] for item in predictions]
-        confs = [round(float(item[4]), 2) for item in predictions]
-        indexes = [int(item[5]) for item in predictions]
-
-        return bboxes, confs, indexes
-
-
 class Annotator():
     def __init__(self, classes: List[str], width: int = 1280, height: int = 720, santa_hat_plugin_bool: bool = False):
         self.width = width
@@ -251,8 +234,8 @@ class Annotator():
 
 
 def main(
-    model_name: str,
     triton_url: str,
+    model_name: str,
     stream_ip: str,
     stream_port: int,
     stream_application: str,
@@ -338,8 +321,8 @@ def main(
 if __name__ == "__main__":
     load_dotenv()
     parser = EnvArgumentParser()
-    parser.add_arg("MODEL_NAME", default="yolov8n", type=str)
     parser.add_arg("TRITON_URL", default="grpc://localhost:8001", type=str)
+    parser.add_arg("MODEL_NAME", default="yolov8n", type=str)
     parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
     parser.add_arg("STREAM_PORT", default=1935, type=int)
     parser.add_arg("STREAM_APPLICATION", default="live", type=str)
@@ -351,8 +334,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(
-        args.MODEL_NAME,
         args.TRITON_URL,
+        args.MODEL_NAME,
         args.STREAM_IP,
         args.STREAM_PORT,
         args.STREAM_APPLICATION,
