@@ -33,7 +33,6 @@ services:
       - /tmp/argus_socket:/tmp/argus_socket
       - ./triton:/root/app/triton
     env_file: .env
-    restart: unless-stopped
 
   nginx-stream:
     image: rcland12/detection-stream:nginx-latest

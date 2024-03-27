@@ -237,6 +237,7 @@ def main(
     stream_port: int,
     stream_application: str,
     stream_key: str,
+    camera_index: int,
     camera_width: int,
     camera_height: int,
     santa_hat_plugin: bool
