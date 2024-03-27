@@ -18,7 +18,7 @@ if [ "${OBJECT_DETECTION}" == "True" ]; then
             echo "Triton is starting (STATUS: HEALTHY). Success!"
             break
         else
-            echo "Triton is starting (STATUS: UNHEALTHY). Trying again in $INTERVAL seconds. Attempt $ATTEMPT/$RETRIES"
+            echo "Triton is starting (STATUS: UNHEALTHY). Checking again in $INTERVAL seconds. Attempt $ATTEMPT/$RETRIES"
             ATTEMPT=$((ATTEMPT + 1))
             sleep $INTERVAL
         fi
