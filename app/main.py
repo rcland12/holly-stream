@@ -5,6 +5,7 @@ import imutils
 import subprocess
 import numpy as np
 
+from ast import literal_eval
 from dotenv import load_dotenv
 from urllib.parse import urlparse
 from typing import Any, List, Tuple, Union, Optional, Type
@@ -230,17 +231,16 @@ class Annotator():
 
 
 def main(
-    triton_url,
-    model_name,
-    stream_ip,
-    stream_port,
-    stream_application,
-    stream_key,
-    camera_index,
-    camera_width,
-    camera_height,
-    santa_hat_plugin
-):
+    triton_url: str,
+    model_name: str,
+    stream_ip: str,
+    stream_port: int,
+    stream_application: str,
+    stream_key: str,
+    camera_width: int,
+    camera_height: int,
+    santa_hat_plugin: bool
+) -> None:
 
     camera = cv2.VideoCapture(camera_index)
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
@@ -286,22 +286,28 @@ def main(
     tracking_index = 0
     p = subprocess.Popen(command, stdin=subprocess.PIPE)
 
-    while camera.isOpened():
-        ret, frame = camera.read()
+    try:
+        while camera.isOpened():
+            ret, frame = camera.read()
 
-        if not ret:
-            print("Frame failed to load...")
-            break
+            if not ret:
+                print("Frame failed to load...")
+                break
 
-        if tracking_index % period == 0:
-            bboxes, confs, indexes = model(frame)
-            tracking_index = 0
+            if tracking_index % period == 0:
+                bboxes, confs, indexes = model(frame)
+                tracking_index = 0
 
-        if bboxes:
-            frame = annotator(frame, bboxes, confs, indexes)
-        tracking_index += 1
+            if bboxes:
+                frame = annotator(frame, bboxes, confs, indexes)
+            tracking_index += 1
 
-        p.stdin.write(frame.tobytes())
+            p.stdin.write(frame.tobytes())
+    
+    finally:
+        camera.release()
+    
+    return
 
 
 
