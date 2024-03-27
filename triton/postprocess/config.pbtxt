@@ -18,20 +18,6 @@ output [
   }
 ]
 
-model_warmup [{
-  name : "postprocess model warmup"
-  batch_size: 1
-  count: 4
-  inputs {
-    key: "INPUT_0"
-    value: {
-      data_type: TYPE_FP16
-      dims: [ 1, 25200, 85 ]
-      input_data_file: "INPUT_0"
-    }
-  }
-}]
-
 instance_group [
   {
     count: 1
