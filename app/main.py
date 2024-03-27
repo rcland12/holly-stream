@@ -286,8 +286,8 @@ def main(
     ]
 
     model = TritonClient(
-        model=model_name,
-        url=triton_url
+        triton_url,
+        model_name
     )
 
     annotator = Annotator(
@@ -296,9 +296,6 @@ def main(
         camera_height,
         santa_hat_plugin
     )
-
-    period = 10
-    tracking_index = 0
 
     camera = Picamera2()
     camera.configure(camera.create_video_configuration(
@@ -310,6 +307,8 @@ def main(
     ))
     camera.controls.Brightness = 0.2
 
+    period = 10
+    tracking_index = 0
     process = subprocess.Popen(command, stdin=subprocess.PIPE)
 
     try:

@@ -1,4 +1,5 @@
 #!/bin/bash
+
 source .env
 
 if [ -z $OBJECT_DETECTION ]; then echo "The environment variable OBJECT_DETECTION is required. This is a boolean value True/False."; fi

@@ -1,4 +1,5 @@
 #!/bin/bash
+
 source .env
 
 if [[ -z "${DOCKER_USERNAME}" ]]; then
