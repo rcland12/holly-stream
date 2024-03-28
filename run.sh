@@ -5,33 +5,35 @@ source .env
 if [ -z $OBJECT_DETECTION ]; then echo "The environment variable OBJECT_DETECTION is required. This is a boolean value True/False."; fi
 
 if [ "${OBJECT_DETECTION}" == "True" ]; then
-    ATTEMPT=1
-    RETRIES=6
-    INTERVAL=10
-
     docker compose up -d triton
+
+    ATTEMPT=1
+    RETRIES=60
+    INTERVAL=1
+    TOTAL_TIME=$((RETRIES * INTERVAL))
+
+    echo "Waiting to start Holly Stream until Triton is healthy."
     while [ $ATTEMPT -le $RETRIES ]; do
         url="http://localhost:8000/v2/health/ready"
         response=$(curl --write-out "%{http_code}" --silent --output /dev/null "$url")
 
         if [ $response -eq 200 ]; then
-            echo "Triton is starting (STATUS: HEALTHY). Success!"
+            echo "Triton STATUS: HEALTHY"
             break
         else
-            echo "Triton is starting (STATUS: UNHEALTHY). Checking again in $INTERVAL seconds. Attempt $ATTEMPT/$RETRIES"
             ATTEMPT=$((ATTEMPT + 1))
             sleep $INTERVAL
         fi
     done
 
     if [ $ATTEMPT -gt $RETRIES ]; then
-        echo "Triton failed all $RETRIES health checks. Stopping all services."
+        echo "Triton failed all health checks after $TOTAL_TIME seconds. Stopping all services."
         exit 120
     fi
 
-    echo "Holly-stream started."
     nohup $PWD/.stream_env/bin/python3 app/main.py > .log.out &
     echo $! > .process.pid
+    echo "Holly-stream started."
 
 elif [ "${OBJECT_DETECTION}" == "False" ]; then
     # Checking if required environment variables are defined. If not, then defining them.

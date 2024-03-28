@@ -5,7 +5,6 @@ from libcamera import Transform
 from picamera2 import Picamera2
 
 
-
 def check_save_path(save_path: str, start_index: int) -> int:
     """
     Function to check if save path exists, and create the directory if not.
@@ -67,10 +66,9 @@ def main(
         number_to_save (int): Number of images to collect.
         start_index (int): Image number to start on. Useful if you have already collected 50 images, you can set start_index to 51.
         period (int): Save image every period, in seconds.
-        camera_index (int): Index of camera device. Most linux devices are found at /dev/video0, hence index 0.
+        camera_fps (int): Frames per second to capture with camera device.
         camera_width (int): Width of input image.
         camera_height (int): Height of input image.
-        camera_fps (int): Frames per second to capture with camera device.
 
     Returns:
         None
@@ -113,7 +111,6 @@ def main(
         camera.stop()
     
     return
-
 
 
 if __name__ == "__main__":
