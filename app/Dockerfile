@@ -10,4 +10,5 @@ RUN apt-get update \
     imutils python-dotenv tritonclient[all]
 
 COPY main.py stream.sh entrypoint.sh ./
+COPY ./images/ ./
 CMD ["/bin/bash", "entrypoint.sh"]

@@ -47,4 +47,3 @@ services:
     build:
       context: ./nginx
     network_mode: host
-
