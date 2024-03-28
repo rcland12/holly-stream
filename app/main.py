@@ -166,16 +166,6 @@ class TritonClient:
         self.model_dims: Tuple[int, int] = self._get_dims()
         self.classes: Optional[List[str]] = self._get_classes()
 
-    @property
-    def runtime(self) -> str:
-        """
-        Get the runtime of the model.
-
-        Returns:
-            str: The runtime of the model.
-        """
-        return self.metadata.get("backend", self.metadata.get("platform"))
-
     def __call__(self, *args) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
         """
         Perform inference on the provided inputs.
