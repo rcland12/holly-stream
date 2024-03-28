@@ -26,7 +26,7 @@ if [ "${OBJECT_DETECTION}" == "True" ]; then
     done
 
     if [ $ATTEMPT -gt $RETRIES ]; then
-        echo "Triton failed all health checks after $TOTAL_TIME. Stopping all services."
+        echo "Triton failed all health checks after $TOTAL_TIME seconds. Stopping all services."
         exit 120
     fi
 
