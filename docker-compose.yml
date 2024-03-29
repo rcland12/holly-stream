@@ -29,9 +29,6 @@ services:
       - /tmp/argus_socket:/tmp/argus_socket
       - ./triton:/root/app/triton
     env_file: .env
-    depends_on:
-      triton:
-        condition: service_healthy
     restart: unless-stopped
 
   nginx-stream:

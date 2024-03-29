@@ -18,19 +18,6 @@ output [
   }
 ]
 
-model_warmup [{
-    name : "object detection model warmup"
-    batch_size: 1
-    inputs {
-      key: "images"
-      value: {
-        data_type: TYPE_FP16
-        dims: [ 1, 3, 640, 640 ]
-        input_data_file: "images"
-      }
-    }
-}]
-
 instance_group [
   {
     count: 1
