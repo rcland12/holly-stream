@@ -12,47 +12,115 @@ from urllib.parse import urlparse
 from typing import Any, Dict, List, Tuple, Union, Optional, Type
 
 
-
 class EnvArgumentParser():
+    """
+    A class for parsing environment variables as arguments with most Python types.
+    """
     def __init__(self):
         self.dict: Dict[str, Any] = {}
 
     class _define_dict(dict):
+        """
+        A custom dictionary subclass for accessing arguments as attributes.
+        """
         __getattr__ = dict.get
         __setattr__ = dict.__setitem__
         __delattr__ = dict.__delitem__
 
-    def add_arg(self, variable: str, default: Any = None, type: Type = str) -> None:
+    def add_arg(self, variable: str, default: Any = None, d_type: Type = str) -> None:
+        """
+        Add an argument to be parsed from an environment variable.
+
+        Args:
+            variable (str): The name of the environment variable.
+            default (Any): The default value if the environment variable is not set.
+            d_type (Type): The expected data type of the argument. Defaults to str.
+        """
         env = os.environ.get(variable)
-
         if env is None:
-            value = default
+            try:
+                if isinstance(default, d_type):
+                    value = default
+                else:
+                    raise TypeError(f"The default value for {variable} cannot be cast to the data type provided.")
+            except TypeError:
+                raise TypeError(f"The type you provided for {variable} is not valid.")
         else:
-            value = self._cast_type(env, type)
-
+            if callable(d_type):
+                value = self._cast_type(env, d_type)
         self.dict[variable] = value
 
     @staticmethod
     def _cast_type(arg: str, d_type: Type) -> Any:
-        if d_type == list or d_type == tuple or d_type == bool:
+        """
+        Cast the argument to the specified data type.
+
+        Args:
+            arg (str): The argument value as a string.
+            d_type (Type): The desired data type.
+
+        Returns:
+            Any: The argument value casted to the specified data type.
+
+        Raises:
+            ValueError: If the argument does not match the given data type or is not supported.
+        """
+        if d_type in [list, tuple, bool, dict]:
             try:
                 cast_value = literal_eval(arg)
-                return cast_value
-            except (ValueError, SyntaxError):
-                raise ValueError(f"Argument {arg} does not match given data type or is not supported.")
+                if not isinstance(cast_value, d_type):
+                    raise TypeError(f"The value cast type ({d_type}) does not match the value given for {arg}")
+            except ValueError as e:
+                raise ValueError(f"Argument {arg} does not match given data type or is not supported:", str(e))
+            except SyntaxError as e:
+                raise SyntaxError(f"Check the types entered for arugment {arg}:", str(e))
         else:
             try:
                 cast_value = d_type(arg)
-                return cast_value
-            except (ValueError, SyntaxError):
-                raise ValueError(f"Argument {arg} does not match given data type or is not supported.")
+            except ValueError as e:
+                raise ValueError(f"Argument {arg} does not match given data type or is not supported:", str(e))
+            except SyntaxError as e:
+                raise SyntaxError(f"Check the types entered for arugment {arg}:", str(e))
+        
+        return cast_value
     
     def parse_args(self) -> '_define_dict':
+        """
+        Parse the added arguments from the environment variables.
+
+        Returns:
+            _define_dict: A custom dictionary containing the parsed arguments.
+        """
         return self._define_dict(self.dict)
 
 
 class TritonClient:
+    """
+    A client class for interacting with Triton Inference Server.
+
+    Args:
+        url (str): The URL of the Triton Inference Server.
+        model (str): The name of the model to be used for inference.
+
+    Attributes:
+        client (InferenceServerClient): The Triton Inference Server client instance.
+        model_name (str): The name of the model being used.
+        metadata (dict): The metadata of the model.
+        config (dict): The configuration of the model.
+        model_dims (Tuple[int, int]): The dimensions of the model input.
+        classes (Optional[List[str]]): The list of class labels, if available.
+
+    Raises:
+        RuntimeError: If an unsupported protocol is used (other than HTTP or GRPC).
+    """
     def __init__(self, url: str, model: str):
+        """
+        Initialize the TritonClient instance.
+
+        Args:
+            url (str): The URL of the Triton Inference Server.
+            model (str): The name of the model to be used for inference.
+        """
         parsed_url = urlparse(url)
         if parsed_url.scheme == "grpc":
             from tritonclient.grpc import InferenceServerClient, InferInput
@@ -91,17 +159,25 @@ class TritonClient:
                 ]
 
         else:
-            raise "Unsupported protocol. Use HTTP or GRPC."
+            raise RuntimeError("Unsupported protocol. Use HTTP or GRPC.")
 
         self._create_input_placeholders_fn = create_input_placeholders
         self.model_dims: Tuple[int, int] = self._get_dims()
         self.classes: Optional[List[str]] = self._get_classes()
 
-    @property
-    def runtime(self) -> str:
-        return self.metadata.get("backend", self.metadata.get("platform"))
-
     def __call__(self, *args) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
+        """
+        Perform inference on the provided inputs.
+
+        Args:
+            *args: The input arguments for the model.
+
+        Returns:
+            Union[torch.Tensor, Tuple[torch.Tensor, ...]]: The inference results.
+
+        Raises:
+            RuntimeError: If no inputs are provided or if the number of inputs does not match the expected number.
+        """
         inputs = self._create_inputs(*args)
         response = self.client.infer(model_name=self.model_name, inputs=inputs)
         result: List[torch.Tensor] = []
@@ -117,6 +193,18 @@ class TritonClient:
         return bboxes, confs, indexes
 
     def _create_inputs(self, *args):
+        """
+        Create input placeholders for the model.
+
+        Args:
+            *args: The input arguments for the model.
+
+        Returns:
+            List[InferInput]: The list of input placeholders.
+
+        Raises:
+            RuntimeError: If no inputs are provided or if the number of inputs does not match the expected number.
+        """
         args_len = len(args)
         if not args_len:
             raise RuntimeError("No inputs provided.")
@@ -132,15 +220,21 @@ class TritonClient:
         return placeholders
 
     def _get_classes(self) -> Optional[List[str]]:
+        """
+        Get the class labels of the model, if available.
+
+        Returns:
+            Optional[List[str]]: The list of class labels, or None if not available.
+        """
         label_filename = self.config["output"][0]["label_filename"]
         docker_file_path = f"/root/app/triton/{self.model_name}/{label_filename}"
-        jetson_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{self.model_name}/{label_filename}")
+        local_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{self.model_name}/{label_filename}")
 
         if os.path.isfile(docker_file_path):
             with open(docker_file_path, "r") as file:
                 classes = file.read().splitlines()
-        elif os.path.isfile(jetson_file_path):
-            with open(jetson_file_path, "r") as file:
+        elif os.path.isfile(local_file_path):
+            with open(local_file_path, "r") as file:
                 classes = file.read().splitlines()
         else:
             classes = None
@@ -148,6 +242,12 @@ class TritonClient:
         return classes
 
     def _get_dims(self) -> Tuple[int, int]:
+        """
+        Get the dimensions of the model input.
+
+        Returns:
+            Tuple[int, int]: The dimensions of the model input.
+        """
         try:
             model_dims = tuple(self.config["input"][0]["dims"][2:4])
             return tuple(map(int, model_dims))
@@ -155,18 +255,57 @@ class TritonClient:
             return (640, 640)
 
 
-class Annotator():
-    def __init__(self, classes: List[str], width: int = 1280, height: int = 720, santa_hat_plugin_bool: bool = False):
+class Annotator:
+    """
+    A class for annotating frames with bounding boxes, class labels, and confidence scores.
+
+    Args:
+        classes (List[str]): A list of class labels.
+        width (int): The width of the frame. Defaults to 1280.
+        height (int): The height of the frame. Defaults to 720.
+        santa_hat_plugin (bool): Indicates whether to use the Santa hat plugin. Defaults to False.
+
+    Attributes:
+        width (int): The width of the frame.
+        height (int): The height of the frame.
+        classes (List[str]): A list of class labels.
+        colors (List[Tuple[float, float, float]]): A list of randomly generated colors for each class.
+        santa_hat (np.ndarray): The Santa hat image.
+        santa_hat_mask (np.ndarray): The Santa hat mask image.
+        santa_hat_plugin (bool): Indicates whether to use the Santa hat plugin.
+    """
+    def __init__(self, classes: List[str], width: int = 1280, height: int = 720, santa_hat_plugin: bool = False):
+        """
+        Initialize the Annotator instance.
+
+        Args:
+            classes (List[str]): A list of class labels.
+            width (int): The width of the frame. Defaults to 1280.
+            height (int): The height of the frame. Defaults to 720.
+            santa_hat_plugin (bool): Indicates whether to use the Santa hat plugin. Defaults to False.
+        """
         self.width = width
         self.height = height
         self.classes = classes
         self.colors = list(np.random.rand(len(self.classes), 3) * 255)
         self.santa_hat = cv2.imread("images/santa_hat.png")
         self.santa_hat_mask = cv2.imread("images/santa_hat_mask.png")
-        self.santa_hat_plugin_bool = santa_hat_plugin_bool
+        self.santa_hat_plugin = santa_hat_plugin
 
     def __call__(self, frame: np.ndarray, bboxes: List[List[float]], confs: List[float], indexes: List[int]) -> np.ndarray:
-        if not self.santa_hat_plugin_bool:
+        """
+        Annotate the frame with bounding boxes, class labels, and confidence scores.
+
+        Args:
+            frame (np.ndarray): The input frame.
+            bboxes (List[List[float]]): A list of bounding box coordinates.
+            confs (List[float]): A list of confidence scores.
+            indexes (List[int]): A list of class indexes.
+
+        Returns:
+            np.ndarray: The annotated frame.
+        """
+        if not self.santa_hat_plugin:
             for i in range(len(bboxes)):
                 xmin, ymin, xmax, ymax = [int(j) for j in bboxes[i]]
                 color = self.colors[indexes[i]]
@@ -197,6 +336,16 @@ class Annotator():
             return self._overlay_obj(frame, bboxes[max_index].copy())
 
     def _overlay_obj(self, frame: np.ndarray, bbox: List[float]) -> np.ndarray:
+        """
+        Overlay the Santa hat on the detected object.
+
+        Args:
+            frame (np.ndarray): The input frame.
+            bbox (List[float]): The bounding box coordinates of the detected object.
+
+        Returns:
+            np.ndarray: The frame with the Santa hat overlaid on the detected object.
+        """
         bbox = [int(i * scalar) for i, scalar in zip(bbox, [self.width, self.height, self.width, self.height])]
         x, y = bbox[0], bbox[1] + 20
 
@@ -244,7 +393,25 @@ def main(
     camera_fps: int,
     santa_hat_plugin: bool
 ):
+    """
+    Main function to run the RTMP stream, object detection and annotation pipeline.
 
+    Args:
+        triton_url (str): The URL of the Triton server.
+        model_name (str): The name of the model to use for object detection.
+        stream_ip (str): The IP address of the RTMP stream server.
+        stream_port (int): The port number of the RTMP stream server.
+        stream_application (str): The application name for the RTMP stream.
+        stream_key (str): The stream key for the RTMP stream.
+        camera_index (int): The index of the camera to use for video capture.
+        camera_width (int): The width of the camera frame.
+        camera_height (int): The height of the camera frame.
+        camera_fps (int): The frames-per-second to use on camera.
+        santa_hat_plugin (bool): Indicates whether to use the Santa hat plugin.
+
+    Returns:
+        None
+    """
     rtmp_url = "rtmp://{}:{}/{}/{}".format(
         stream_ip,
         stream_port,
@@ -253,8 +420,7 @@ def main(
     )
 
     command = [
-        'ffmpeg',
-        '-y',
+        'ffmpeg', '-y',
         '-f', 'rawvideo',
         '-vcodec', 'rawvideo',
         '-pix_fmt', 'bgr24',
@@ -316,17 +482,17 @@ def main(
 if __name__ == "__main__":
     load_dotenv()
     parser = EnvArgumentParser()
-    parser.add_arg("TRITON_URL", default="grpc://localhost:8001", type=str)
-    parser.add_arg("MODEL_NAME", default="yolov5s", type=str)
-    parser.add_arg("STREAM_IP", default="127.0.0.1", type=str)
-    parser.add_arg("STREAM_PORT", default=1935, type=int)
-    parser.add_arg("STREAM_APPLICATION", default="live", type=str)
-    parser.add_arg("STREAM_KEY", default="stream", type=str)
-    parser.add_arg("CAMERA_INDEX", default=0, type=int)
-    parser.add_arg("CAMERA_WIDTH", default=1280, type=int)
-    parser.add_arg("CAMERA_HEIGHT", default=720, type=int)
-    parser.add_arg("CAMERA_FPS", default=30, type=int)
-    parser.add_arg("SANTA_HAT_PLUGIN", default=False, type=bool)
+    parser.add_arg("TRITON_URL", default="grpc://localhost:8001", d_type=str)
+    parser.add_arg("MODEL_NAME", default="yolov5s", d_type=str)
+    parser.add_arg("STREAM_IP", default="127.0.0.1", d_type=str)
+    parser.add_arg("STREAM_PORT", default=1935, d_type=int)
+    parser.add_arg("STREAM_APPLICATION", default="live", d_type=str)
+    parser.add_arg("STREAM_KEY", default="stream", d_type=str)
+    parser.add_arg("CAMERA_INDEX", default=0, d_type=int)
+    parser.add_arg("CAMERA_WIDTH", default=1280, d_type=int)
+    parser.add_arg("CAMERA_HEIGHT", default=720, d_type=int)
+    parser.add_arg("CAMERA_FPS", default=30, d_type=int)
+    parser.add_arg("SANTA_HAT_PLUGIN", default=False, d_type=bool)
     args = parser.parse_args()
 
     main(

@@ -2,7 +2,6 @@
 
 source .env
 
-
 if [[ -z "${DOCKER_USERNAME}" ]]; then
     echo "Set your DOCKER_USERNAME in your .env file"
     exit 1

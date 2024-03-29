@@ -1,4 +1,5 @@
 #!/bin/bash
+
 if [ "${OBJECT_DETECTION}" == "True" ]; then
     python3 main.py
 elif [ "${OBJECT_DETECTION}" == "False" ]; then

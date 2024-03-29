@@ -4,7 +4,6 @@ import cv2
 from nanocamera import Camera
 
 
-
 def check_save_path(save_path: str, start_index: int) -> int:
     """
     Function to check if save path exists, and create the directory if not.

@@ -1,10 +1,10 @@
-# Holly Stream
-This application will ingest your Jetson's camera feed, apply an object detection task with bounding boxes, and send that feed via RTMP to an address of your choice. Watch the stream on your Jetson, another local machine, or an external web server.
+<img src="./logo.png" alt="Failed to load image." style="width: auto;">
+This application will ingest your computers webcam feed (using ffmpeg), apply an object detection task on the feed with bounding boxes, and send that feed via RTMP to an address of your choice. You can also turn off object detection to create a simple live stream camera, good for a security system or monitoring system.
 
 # Prerequisites
-On your Jetson Nano, there are a couple of recommended and required steps before you can harness the GPU.
+There are a couple of recommended steps before you can run this application.
 
-## (recommended) Allocate more memory
+## (recommended) Allocate swap memory
 Allocating more swap memory will use storage if your device needs more memory. You can do so with the following commands:
 ```bash
 sudo fallocate -l 4G /var/swapfile 
@@ -15,7 +15,7 @@ sudo bash -c "echo '/var/swapfile swap swap defaults 0 0'  >> /etc/fstab"
 ```
 
 ## (required) Allow Docker GPU access
-In order to allow Docker access to your Jetson Nano GPU, you will have to add the following argument, `"default-runtime": "nvidia"` to the file `/etc/docker/daemon.json`:
+In order to allow Docker access to your Jetson GPU, you will have to add the following argument, `"default-runtime": "nvidia"` to the file `/etc/docker/daemon.json`:
 ```bash
 {
     "runtimes": {
@@ -92,11 +92,11 @@ You can use Docker or the native operating system:
 Pull the Jetson Image:
 ```bash
 docker pull rcland12/detection-stream:jetson-latest
-docker pull rcland12/detection-stream:triton-latest
+docker pull rcland12/detection-stream:jetson-triton-latest
 ```
 
 ## Non-Docker Installation
-This install script will install all dependencies needed for this application, including OpenCV, PyTorch, Torchvision, and the Triton Inference Server/Client. You will be prompted to type your password in multiple times, and this script should take roughly two or three hours to complete.
+This install script will install all dependencies needed for this application, including OpenCV, PyTorch, Torchvision, and the Triton Inference Server/Client. You will be prompted to type your password in multiple times, and this script should take roughly two or three hours to complete. WARNING: This script has only been testing on a Jetson Nano (JetPack OS 4.6.4).
 ```bash
 ./install.sh
 ```
@@ -125,9 +125,8 @@ touch .env
 Here is a list of all possible arguments:
 ```bash
 OBJECT_DETECTION=True
-TRITON_URL=grpc://localhost:8001
-MODEL=yolov5m
-CLASSES=[0, 16]
+MODEL=yolov5s
+CLASSES=None
 MODEL_DIMS=(640, 640)
 CONFIDENCE_THRESHOLD=0.3
 IOU_THRESHOLD=0.25
@@ -141,6 +140,7 @@ CAMERA_INDEX=0
 CAMERA_WIDTH=1280
 CAMERA_HEIGHT=720
 CAMERA_FPS=22
+SANTA_HAT_PLUGIN=False
 ```
 
 A few comments about the parameters:
@@ -150,13 +150,13 @@ A few comments about the parameters:
 - `MODEL_DIMS` must match the model dimensions for the model supplied.
 - The `CONFIDENCE_THRESHOLD` and `IOU_THRESHOLD` arguments are used in non-maximum supression in the postprocess model.
 - All arguments accept the data type present above. `STREAM_IP` takes a string, `STREAM_PORT` takes an integer, `STREAM_APPLICATION` takes a string, etc.
-
-
+---
+- If you are watching the stream on the same device set the `STREAM_IP` to `127.0.0.1`, or whatever localhost address you want.
+- If you are streaming the feed to another device on your local network, set the `STREAM_IP` to the IPV4 address of that device. To find the IP address of a device on Linux machine run `ip a` and look for it under `wl01` or something similar. If your Linux machine is running a firewall (e.g. ufw), set an allow rule for port 1935: `sudo ufw allow 1935`. On a windows machine open Windows Powershell and run `ipconfig` and look for `IP address`. On a Windows machine you will most likely need to expose a port (1935 is default) in order to receive the stream. Do this by adding an [Inbound Rule](https://www.tomshardware.com/news/how-to-open-firewall-ports-in-windows-10,36451.html).
+- If you are streaming the feed to another server set the `STREAM_IP` to the public IP address for that server. Also make sure you expose port 1935 on the firewall and router if necessary for the server your sending the stream to.
+---
+- The variable `SANTA_HAT_PLUGIN`, if set to True, will not add a bounding box, but a santa hat to the object with the highest probability score. I use this parameter when detecting my dog using a custom model, especially around Christmas!
 The application is ready to launch, so pick the method for receiving the stream:
-
-1. If you are watching the stream on the same device set the `STREAM_IP` to `127.0.0.1`, or whatever localhost address you want.
-2. If you are streaming the feed to another device on your local network, set the `STREAM_IP` to the IPV4 address of that device. To find the IP address of a device on Linux machine run `ip a` and look for it under `wl01` or something similar. If your Linux machine is running a firewall (e.g. ufw), set an allow rule for port 1935: `sudo ufw allow 1935`. On a windows machine open Windows Powershell and run `ipconfig` and look for `IP address`. On a Windows machine you will most likely need to expose a port (1935 is default) in order to receive the stream. Do this by adding an [Inbound Rule](https://www.tomshardware.com/news/how-to-open-firewall-ports-in-windows-10,36451.html).
-3. If you are streaming the feed to another server set the `STREAM_IP` to the public IP address for that server. Also make sure you expose port 1935 on the firewall and router if necessary for the server your sending the stream to.
 
 Lastly, to receive the stream on the device you picked above you have two options:
 
@@ -170,13 +170,10 @@ The client machine you are using must have Docker and the compose plugin. You wi
 docker compose up -d nginx-stream
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Jetson Nano). Run the following docker command if you are using a Jetson Nano:
-
+Once the client software is running you can launch the streaming application from the server side (Jetson device):
 ```bash
-docker-compose up -d triton jetson-stream
+./run.sh
 ```
-
-I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker-compose down`.
 
 Lastly, on the client side you can open up your streaming software and find where you can watch a network stream or URL stream, then use the address you set up in the parameters:
 ```bash
@@ -186,6 +183,18 @@ rtmp://<STREAM_IP>:<STREAM_PORT>/<STREAM_APPLICATION>/<STREAM_KEY>
 rtmp://127.0.0.1:1935/live/stream
 ```
 
+If `127.0.0.1` does not work, try `0.0.0.0`.
+
+To stop the running services on the server (Raspberry Pi), run:
+```bash
+./stop.sh
+```
+
+To stop the running services on the client, run:
+```bash
+docker compose down
+```
+
 ## Watching stream through web browser
 The client machine you are using must have Docker and the compose plugin. You will now launch a container that will start a web server on localhost port 80. If you already have Nginx running on port 1935 on your machine you will have to stop that service before you start this one.
 
@@ -193,15 +202,22 @@ The client machine you are using must have Docker and the compose plugin. You wi
 docker compose up -d nginx-web
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Jetson Nano or Linux). Run the following docker command if you are using a Jetson Nano:
-
+Once the client software is running you can launch the streaming application from the server side (Jetson device):
 ```bash
-docker-compose up -d jetson-stream
+./run.sh
 ```
 
-I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker-compose down`.
-
 Lastly, on the client side navigate to the web address `http://localhost/stream.html`. If you plan on serving this stream on a live web server, following the instructions in the next section.
+
+To stop the running services on the server (Raspberry Pi), run:
+```bash
+./stop.sh
+```
+
+To stop the running services on the client, run:
+```bash
+docker compose down
+```
 
 ## Streaming the feed to a web server
 If you are streaming to a remote web server most of the steps will be the same. You will clone the repo on your web server. Before you launch the service you will have to make a few changes.
@@ -212,29 +228,34 @@ File `nginx/stream/stream.html`:
 
 File `nginx/nginx-web/nginx.conf`:
 - Whitelist your IP address by first finding your home IP address (you can do so [here](https://whatismyipaddress.com/)).
-- Under the rtmp block, aroud lines 51-54 add another line with `allow publish <your_ipv4>;`. Don't forget the semicolon.
-- Add your domain name on line 36. Replace `server_name localhost;` with `server_name website.com;`.Don't forget the semicolon.
-- If for some reason you want to change the application name edit line 57 by replacing `application live` with `application <application_name>`. Then remember to also make that change in your `.env` file for the variable STREAM_APPLICATION.
+- Under the rtmp block, aroud lines 40-43 add another line with `allow publish <your_ipv4>;`. Don't forget the semicolon.
+- Add your domain name on line 27. Replace `server_name localhost;` with `server_name website.com;`.Don't forget the semicolon.
+- If for some reason you want to change the application name edit line 46 by replacing `application live` with `application <application_name>`. Then remember to also make that change in your `.env` file for the variable STREAM_APPLICATION.
 
 Now you can launch this service on your web server:
-
 ```bash
 docker compose run -d nginx-web
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Jetson Nano). Run the following docker command if you are using a Jetson Nano:
-
+Once the client software is running you can launch the streaming application from the server side (Jetson device):
 ```bash
-docker-compose up -d jetson-stream
+./run.sh
 ```
-
-I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker-compose down`.
 
 Lastly, you will be able to access the stream at `https://website.com/stream.html`. You can of course make changes to this and create a different route for this stream, but this is the minimum requirements.
 
+To stop the running services on the server (Raspberry Pi), run:
+```bash
+./stop.sh
+```
+
+To stop the running services on the client, run:
+```bash
+docker compose down
+```
 
 ## Change the default class predictor
-By default this application detects people and dogs (I made this for a home security system). To change or add classes for detection, add a CLASSES environmental variable to your `.env` file, if you don't already have it. Remove it to inference on all classes below. Otherwise, use a list to add classes you want to inference on. Such as `CLASSES=[0, 16, 17, 54, 67]`.
+By default this application detects 80 different classes. To change or add classes for detection, add a CLASSES environmental variable to your `.env` file, if you don't already have it. Remove it to inference on all classes below. Otherwise, use a list to add classes you want to inference on. Such as `CLASSES=[0, 16, 17, 54, 67]`.
 
 | class_index  | class_name     |
 |--------------|----------------|

@@ -40,6 +40,7 @@ if [ "${OBJECT_DETECTION}" == "True" ]; then
     else
         echo "Holly STREAM STATUS: UNHEALTHY"
         echo "Shutting down."
+        docker-compose down
     fi
 
 elif [ "${OBJECT_DETECTION}" == "False" ]; then

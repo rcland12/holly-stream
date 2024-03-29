@@ -70,4 +70,5 @@ RUN python3 -m pip install --upgrade --no-cache-dir pip \
 
 WORKDIR ${APPDIR}
 COPY main.py stream.sh entrypoint.sh ./
+COPY ./images/ ./
 CMD ["/bin/bash", "entrypoint.sh"]
