@@ -63,7 +63,7 @@ Run the setup script provided. This will install the environment to run the main
 
 Pull the Triton image. This service is containerized and only needs Docker to run. If you only plan on live streaming without object detection, you will not need this image.
 ```bash
-docker pull rcland12/detection-stream:raspian-triton-latest
+docker pull rcland12/detection-stream:raspbian-triton-latest
 ```
 
 # Deployment
@@ -91,28 +91,28 @@ touch .env
 Here is a list of all possible arguments:
 
 ```bash
-OBJECT_DETECTION="True"
-MODEL_NAME="yolov8n"
-MODEL_DIMS="(640, 640)"
-MODEL_REPOSITORY="/root/app/triton"
-CONFIDENCE_THRESHOLD="0.3"
-IOU_THRESHOLD="0.25"
-CLASSES="[0, 1]"
+OBJECT_DETECTION=True
+MODEL_NAME=yolov8n
+MODEL_DIMS=(640, 640)
+MODEL_REPOSITORY=/root/app/triton
+CONFIDENCE_THRESHOLD=0.3
+IOU_THRESHOLD=0.25
+CLASSES=[0, 1]
 
 # Used if your Triton model repo is hosted in s3
 AWS_ACCESS_KEY_ID=<aws_access_key_id>
 AWS_SECRET_ACCESS_KEY=<aws_secret_access_key>
 AWS_DEFAULT_REGION=<aws_default_region>
 
-STREAM_IP="127.0.0.1"
-STREAM_PORT="1935"
-STREAM_APPLICATION="live"
-STREAM_KEY="stream"
+STREAM_IP=127.0.0.1
+STREAM_PORT=1935
+STREAM_APPLICATION=live
+STREAM_KEY=stream
 
-CAMERA_WIDTH="1280"
-CAMERA_HEIGHT="720"
-CAMERA_FPS="30"
-SANTA_HAT_PLUGIN="False"
+CAMERA_WIDTH=1280
+CAMERA_HEIGHT=720
+CAMERA_FPS=30
+SANTA_HAT_PLUGIN=False
 ```
 
 A few comments about the parameters:
@@ -214,6 +214,16 @@ Once the client software is running you can launch the streaming application fro
 ```
 
 Lastly, you will be able to access the stream at `https://website.com/index.html`. You can of course make changes to this and create a different route for this stream, but this is the minimum requirements.
+
+To stop the running services on the server (Raspberry Pi), run:
+```bash
+./stop.sh
+```
+
+To stop the running services on the client, run:
+```bash
+docker compose down
+```
 
 ## Change the default class predictor
 By default this application detects 80 different classes. To change or add classes for detection, add a CLASSES environmental variable to your `.env` file, if you don't already have it. Remove it to inference on all classes below. Otherwise, use a list to add classes you want to inference on. Such as `CLASSES=[0, 16, 17, 54, 67]`.
