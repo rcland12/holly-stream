@@ -3,9 +3,9 @@ This application will ingest your computers webcam feed (using ffmpeg), apply an
 
 ---
 
-This project has three main branches, `jetson`, `linux`, and `raspbian`. The `jetson` branch is intended for use on Nvidia Jetson architecture. The `linux` branch is intended for use on a Linux-based operating system (Debian, Arch, etc.). The `raspbian` branch is intended for use on a Raspberry Pi machine (tested on a Raspberry Pi 4). Switch to the corresponding branch to get started.
+This project has three main branches, [`jetson`](https://github.com/rcland12/holly-stream/tree/jetson), [`linux`](https://github.com/rcland12/holly-stream/tree/linux), and [`raspbian`](https://github.com/rcland12/holly-stream/tree/raspbian). The `jetson` branch is intended for use on Nvidia Jetson architecture (JetPack OS). The `linux` branch is intended for use on a Linux-based operating system (Debian, Arch, etc.). The `raspbian` branch is intended for use on a Raspberry Pi machine (tested on a Raspberry Pi 4, Raspian OS). Switch to the corresponding branch to get started.
 
-### Jetson Nano
+### Jetson
 ```bash
 # https
 git clone --branch jetson --depth 1 https://github.com/rcland12/holly-stream.git
