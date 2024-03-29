@@ -236,9 +236,9 @@ File `nginx/stream/stream.html`:
 
 File `nginx/nginx-web/nginx.conf`:
 - Whitelist your IP address by first finding your home IP address (you can do so [here](https://whatismyipaddress.com/)).
-- Under the rtmp block, aroud lines 51-54 add another line with `allow publish <your_ipv4>;`. Don't forget the semicolon.
-- Add your domain name on line 36. Replace `server_name localhost;` with `server_name website.com;`. Don't forget the semicolon.
-- If for some reason you want to change the application name edit line 57 by replacing `application live` with `application <application_name>`. Then remember to also make that change in your `.env` file for the variable STREAM_APPLICATION.
+- Under the rtmp block, aroud lines 40-43 add another line with `allow publish <your_ipv4>;`. Don't forget the semicolon.
+- Add your domain name on line 27. Replace `server_name localhost;` with `server_name website.com;`. Don't forget the semicolon.
+- If for some reason you want to change the application name edit line 46 by replacing `application live` with `application <application_name>`. Then remember to also make that change in your `.env` file for the variable STREAM_APPLICATION.
 
 Now you can launch this service on your web server:
 ```bash
