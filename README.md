@@ -1,20 +1,21 @@
-# Holly Stream
-This application will ingest your computers camera feed, apply an object detection task with bounding boxes, and send that feed via RTMP to an address of your choice. Watch the stream on your computer, another local machine, or an external web server.
+<img src="./app/images/logo.png" alt="Failed to load image." style="width: auto;">
+This application will ingest your computers webcam feed (using ffmpeg), apply an object detection task on the feed with bounding boxes, and send that feed via RTMP to an address of your choice. You can also turn off object detection to create a simple live stream camera, good for a security system or monitoring system.
 
 # Requirements
 
 * Docker and the compose plugin
-* CUDA-enabled GPU
-* At least 4GB of RAM
 * Webcam, at least 720p recommended
+* At least 4GB of RAM
+* CUDA-enabled GPU
+    * If your machine does not have a GPU, you can still run Triton but you will have to use an ONNX model and modify some of the `config.pbtxt` files throughout. If you are training a custom model it is highly encouraged to use a CUDA-enabled machine with a GPU. There are options such as Google Colab to train models with GPUs if need be.
 
 # Prerequisites
-There are a couple of recommended and required steps before you can run this application.
+There are a couple of recommended steps before you can run this application.
 
-## (required) A YOLOv8 or YOLOv5 model
-This application uses a service called Nvidia Trition Inference Server. It uses an object detection model format called TensorRT. THIS MODEL FORMAT IS MACHINE SPECIFIC. If I trained a YOLOv8 model on a Nvidia GeForce GTX 1060 GPU and convert it, it will not work on another GPU architecture. Therefore, you must convert your own model. If you want to use the default YOLOv8 model, you can simply follow the steps below. Otherwise, the next section will explain how to train a custom model with labels of your choice.
+## (optional) A YOLOv8 or YOLOv5 model
+This application uses a service called Nvidia Trition Inference Server. It uses an object detection model format called TensorRT. THIS MODEL FORMAT IS MACHINE SPECIFIC. If I trained a YOLOv8 model on a Nvidia GeForce GTX 1060 GPU and convert it, it will not work on another GPU architecture. Therefore, you must convert your own model. If you want to use the default YOLOv8 model, you can simply follow the steps below. Otherwise, the next section will explain how to train a custom model with labels of your choice. If you want to disable object detection see the [Deployment](#deployment) section.
 
-### How to convert a YOLOv8n (nano) model to TensorRT format
+### (optional) How to convert a YOLOv8n (nano) model to TensorRT format
 
 1. Set up a python environment.
 
@@ -34,7 +35,7 @@ This application uses a service called Nvidia Trition Inference Server. It uses 
         simplify=True    # ONNX model simplification
     )
     ```
-    This model should save to `weights/yolov8n.onnx`.
+    This model should save to `weights/yolov8n.onnx`. If you do not a GPU that is CUDA-enabled, remove the `half` argument. FP16 format is only supported for GPU. You will use this model to run in Triton, so skip the next step.
 
 4. Launch the Nvidia TensorRT container and convert the model:
 
@@ -133,8 +134,9 @@ Here is a list of all possible arguments:
 
 ```bash
 OBJECT_DETECTION=True
-CLASSES=[0, 1]
+CLASSES=None
 MODEL_NAME=yolov8n
+MODEL_DIMS=(640, 640)
 MODEL_REPOSITORY=/root/app/triton
 AWS_ACCESS_KEY_ID=<aws_access_key_id>
 AWS_SECRET_ACCESS_KEY=<aws_secret_access_key>
@@ -148,6 +150,8 @@ STREAM_KEY=stream
 CAMERA_INDEX=0
 CAMERA_WIDTH=1280
 CAMERA_HEIGHT=720
+CAMERA_FPS=30
+CAMERA_AUDIO=False
 SANTA_HAT_PLUGIN=False
 ```
 
@@ -163,6 +167,7 @@ A few comments about the parameters:
 - If you are streaming the feed to another device on your local network, set the `STREAM_IP` to the IPV4 address of that device. To find the IP address of a device on linux machine run `ip a` and look for it under `wl01` or something similar. On a windows machine open Windows Powershell and run `ipconfig` and look for `IP address`.
 - If you are streaming the feed to another server set the `STREAM_IP` to the public IP address for that server. Also make sure you expose port 1935 on the firewall and router if necessary for the server your sending the stream to.
 ---
+- The variable `CAMERA_AUDIO` is a boolean to set audio on/off if your camera also has a microphone. This variable is required if `OBJECT_DETECTION` is set to False, otherwise it will do nothing.
 - The variable `SANTA_HAT_PLUGIN`, if set to True, will not add a bounding box, but a santa hat to the object with the highest probability score. I use this parameter when detecting my dog using a custom model, especially around Christmas!
 
 Lastly, to receive the stream on the device you picked above you have two options:
@@ -172,18 +177,14 @@ Lastly, to receive the stream on the device you picked above you have two option
 
 ## Watching stream through streaming software
 The client machine you are using must have Docker and the compose plugin. You will now launch a container that will pick up the feed and send it to your streaming software. If you already have Nginx running on port 1935 on your machine you will have to stop that service before you start this one.
-
 ```bash
 docker compose up -d nginx-stream
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Linux machine). Run the following docker compose command:
-
+Once the client software is running you can launch the streaming application from the server side (Linux machine):
 ```bash
-docker compose up -d app
+./run.sh
 ```
-
-I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker compose down`.
 
 Lastly, on the client side you can open up your streaming software and find where you can watch a network stream or URL stream, then use the address you set up in the parameters:
 ```bash
@@ -193,22 +194,38 @@ rtmp://0.0.0.0:<STREAM_PORT>/<STREAM_APPLICATION>/<STREAM_KEY>
 rtmp://0.0.0.0:1935/live/stream
 ```
 
+To stop the running services on the server (Raspberry Pi), run:
+```bash
+./stop.sh
+```
+
+To stop the running services on the client, run:
+```bash
+docker compose down
+```
+
 ## Watching stream through web browser
 The client machine you are using must have Docker and the compose plugin. You will now launch a container that will start a web server on localhost port 80. If you already have Nginx running on port 1935 on your machine you will have to stop that service before you start this one.
-
 ```bash
 docker compose up -d nginx-web
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Linux machine). Run the following docker compose command:
-
+Once the client software is running you can launch the streaming application from the server side (Linux machine):
 ```bash
 docker compose up -d linux-stream
 ```
 
-I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker compose down`.
-
 Lastly, on the client side navigate to the web address `http://localhost/stream.html`. If you plan on serving this stream on a live web server, following the instructions in the next section.
+
+To stop the running services on the server (Raspberry Pi), run:
+```bash
+./stop.sh
+```
+
+To stop the running services on the client, run:
+```bash
+docker compose down
+```
 
 ## Streaming the feed to a web server
 If you are streaming to a remote web server most of the steps will be the same. You will clone the repo on your web server. Before you launch the service you will have to make a few changes.
@@ -219,29 +236,34 @@ File `nginx/stream/stream.html`:
 
 File `nginx/nginx-web/nginx.conf`:
 - Whitelist your IP address by first finding your home IP address (you can do so [here](https://whatismyipaddress.com/)).
-- Under the rtmp block, aroud lines 51-54 add another line with `allow publish <your_ipv4>;`. Don't forget the semicolon.
-- Add your domain name on line 36. Replace `server_name localhost;` with `server_name website.com;`. Don't forget the semicolon.
-- If for some reason you want to change the application name edit line 57 by replacing `application live` with `application <application_name>`. Then remember to also make that change in your `.env` file for the variable STREAM_APPLICATION.
+- Under the rtmp block, aroud lines 40-43 add another line with `allow publish <your_ipv4>;`. Don't forget the semicolon.
+- Add your domain name on line 27. Replace `server_name localhost;` with `server_name website.com;`. Don't forget the semicolon.
+- If for some reason you want to change the application name edit line 46 by replacing `application live` with `application <application_name>`. Then remember to also make that change in your `.env` file for the variable STREAM_APPLICATION.
 
 Now you can launch this service on your web server:
-
 ```bash
 docker compose run -d nginx-web
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Linux machine). Run the following docker compose command:
-
+Once the client software is running you can launch the streaming application from the server side (Linux machine):
 ```bash
-docker compose up -d linux-stream
+./run.sh
 ```
-
-I recommend appending the `-d` flag which will run the service in the background, but if you need to troubleshoot remove the `-d` flag. To close your running container, simply run `docker compose down`.
 
 Lastly, you will be able to access the stream at `https://website.com/stream.html`. You can of course make changes to this and create a different route for this stream, but this is the minimum requirements.
 
+To stop the running services on the server (Raspberry Pi), run:
+```bash
+./stop.sh
+```
+
+To stop the running services on the client, run:
+```bash
+docker compose down
+```
 
 ## Change the default class predictor
-By default this application detects people and dogs (I made this for a home security system). To change or add classes for detection, add a CLASSES environmental variable to your `.env` file, if you don't already have it. Remove it to inference on all classes below. Otherwise, use a list to add classes you want to inference on. Such as `CLASSES=[0, 16, 17, 54, 67]`.
+By default this application detects 80 different classes. To change or add classes for detection, add a CLASSES environmental variable to your `.env` file, if you don't already have it. Remove it to inference on all classes below. Otherwise, use a list to add classes you want to inference on. Such as `CLASSES=[0, 16, 17, 54, 67]`.
 
 | class_index  | class_name     |
 |--------------|----------------|

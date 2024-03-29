@@ -72,6 +72,7 @@ COPY --chown=1000:1000 --from=full /opt/tritonserver/include include/
 
 COPY --chown=1000:1000 --from=full /opt/tritonserver/backends/python /opt/tritonserver/backends/python
 COPY --chown=1000:1000 --from=full /opt/tritonserver/backends/tensorrt /opt/tritonserver/backends/tensorrt
+COPY --chown=1000:1000 --from=full /opt/tritonserver/backends/onnxruntime /opt/tritonserver/backends/onnxruntime
 
 RUN chown triton-server:triton-server /opt/tritonserver/backends
 COPY --chown=1000:1000 --from=full /opt/tritonserver/repoagents/checksum /opt/tritonserver/repoagents/checksum

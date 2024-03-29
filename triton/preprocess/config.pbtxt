@@ -18,20 +18,6 @@ output [
   }
 ]
 
-model_warmup [{
-  name : "preprocess model warmup"
-  batch_size: 1
-  count: 4
-  inputs {
-    key: "INPUT_0"
-    value: {
-      data_type: TYPE_UINT8
-      dims: [ 1280, 720, 3 ]
-      input_data_file: "INPUT_0"
-    }
-  }
-}]
-
 instance_group [
   {
     count: 1

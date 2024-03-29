@@ -5,7 +5,9 @@
 *.m3u8
 stream-*.ts
 *.plan
+*.onnx
 data/
+holly/
 
 ### Linux ###
 *~
