@@ -1,4 +1,4 @@
-<img src="./logo.png" alt="Failed to load image." style="width: auto;">
+<img src="./app/images/logo.png" alt="Failed to load image." style="width: auto;">
 This application will ingest your computers webcam feed (using ffmpeg), apply an object detection task on the feed with bounding boxes, and send that feed via RTMP to an address of your choice. You can also turn off object detection to create a simple live stream camera, good for a security system or monitoring system.
 
 # Prerequisites
