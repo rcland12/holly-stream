@@ -2,20 +2,12 @@
 
 source .env
 
-if [[ -z "${DOCKER_USERNAME}" ]]; then
-    echo "Set your DOCKER_USERNAME in your .env file"
-    exit 1
-fi
-
-if [[ -z "${DOCKER_PASSWORD}" ]]; then
-    echo "Set your DOCKER_PASSWORD in your .env file"
-    exit 1
-fi
-
-if [[ -z "${LATEST_VERSION}" ]]; then
-    echo "Set the LATEST_VERSION in your .env file"
-    exit 1
-fi
+for var in DOCKER_USERNAME DOCKER_PASSWORD LATEST_VERSION; do
+    if [[ -z "${!var}" ]]; then
+        echo "Set ${var} in your .env file"
+        exit 1
+    fi
+done
 
 docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}
 docker images -q rcland12/detection-stream:raspbian-triton-latest | xargs -I{} docker tag {} rcland12/detection-stream:raspbian-triton-${LATEST_VERSION}
