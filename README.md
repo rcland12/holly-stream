@@ -67,6 +67,12 @@ Run the setup script provided. This will install the environment to run the main
 Pull the Triton image. This service is containerized and only needs Docker to run. If you only plan on live streaming without object detection, you will not need this image.
 ```bash
 docker pull rcland12/detection-stream:raspbian-triton-latest
+docker pull rcland12/detection-stream:nginx-latest
+```
+
+Make sure the scripts are executable.
+```
+chmod u+x ./run.sh ./stop.sh
 ```
 
 # Deployment
@@ -96,11 +102,11 @@ Here is a list of all possible arguments:
 ```bash
 OBJECT_DETECTION=True
 MODEL_NAME=yolov8n
-MODEL_DIMS=(640, 640)
+MODEL_DIMS="(640, 640)"
 MODEL_REPOSITORY=/root/app/triton
 CONFIDENCE_THRESHOLD=0.3
 IOU_THRESHOLD=0.25
-CLASSES=[0, 1]
+CLASSES="[0, 1]"
 
 # Used if your Triton model repo is hosted in s3
 AWS_ACCESS_KEY_ID=<aws_access_key_id>
@@ -113,6 +119,7 @@ STREAM_PORT=1935
 STREAM_APPLICATION=live
 STREAM_KEY=stream
 
+CAMERA_AUDIO=True
 CAMERA_WIDTH=1280
 CAMERA_HEIGHT=720
 CAMERA_FPS=30
@@ -130,7 +137,7 @@ A few comments about the parameters:
 - The `MODEL_DIMS` variable is the shape of your Yolov8 model inputs (e.g. (1280, 720)) in Python tuple format.
 - The `MODEL_REPOSITORY` is the path in the Triton container to the model repository. You can also provide an s3 bucket path for this variable (e.g. `s3://example-s3-models-path/`). This model repository must have the same structure as the `triton/` directory in this repo.
 - The `CONFIDENCE_THRESHOLD` and `IOU_THRESHOLD` variables are the hyperparameters used in the non-maximum supression algorithm in the postprocess Triton model.
-- The `CLASSES` variable takes in a python list format. If you wish to include all possible classes, remove it from the `.env` file. The possible classes for the default model are [listed below](#change-the-default-class-predictor).
+- The `CLASSES` variable takes in a python list format. If you wish to include all possible classes, remove it from the `.env` file. The possible classes for the default model are [listed below](#change-the-default-class-predictor). Make sure this is wrapped in quotes, because of Linux syntax.
 - If you provide an s3 bucket for `MODEL_REPOSITORY`, you must also provided the `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_DEFAULT_REGION`.
 ---
 - All arguments accept the data type present above. `STREAM_IP` takes a string, `STREAM_PORT` takes an integer, `STREAM_APPLICATION` takes a string, etc.
@@ -151,32 +158,33 @@ Lastly, to receive the stream on the device you picked above you have two option
 2. [Watch the stream through a browser.](#watching-stream-through-web-browser)
 
 ## Watching stream through streaming software
-The client machine you are using must have Docker and the compose plugin. You will now launch a container that will pick up the feed and send it to your streaming software. If you already have Nginx running on port 1935 on your machine you will have to stop that service before you start this one. Also consider you may need to open port 1935 inbound on your client machine. Otherwise start this service:
+Start by launching this nginx server. It will allow the stream to be captured and saved to files that can then be read by your streaming software. It uses a protocol called HLS. Launch this container on the same machine your streaming from and set the STREAM_IP to 127.0.0.1, STREAM_PORT to 1935, and make sure STREAM_APPLICATION matches the application in `./nginx/nginx-stream/nginx.conf`. Take note of your STREAM_KEY, this will be needed when you load the stream.
 ```bash
 docker compose up -d nginx-stream
 ```
 
-Once the client software is running you can launch the streaming application from the server side (Raspberry Pi):
+Once the nginx service is running, you can start the live stream:
 ```bash
 ./run.sh
 ```
 
-Lastly, on the client side you can open up your streaming software and find where you can watch a network stream or URL stream, then use the address you set up in the parameters:
+To watch the stream on VLC, Windows Media Player, etc. start a network stream with the following url. The IP address should match the location you are streaming from. If you are watching the stream on the same device nginx is running from, using "localhost" or "127.0.0.1" as the IP address. If you are watching from another local device on your private network use the IP from the device nginx is running on. For instance, if you are running nginx on a raspberry pi, find the IP address by typing `ip a`. Find the inet under either "eth0" or "wlan0" depending on if you are hardwired or using WiFi. Then use that IP address in the url.
 ```bash
-rtmp://127.0.0.1:<STREAM_PORT>/<STREAM_APPLICATION>/<STREAM_KEY>
+rtmp://<ORIGIN_IP_ADDRESS>:<STREAM_PORT>/<STREAM_APPLICATION>/<STREAM_KEY>
 
-# example
-rtmp://127.0.0.1:1935/live/stream
+# watching on the same Raspberry Pi 4B via VLC
+rtmp://localhost:1935/live/stream
+
+# watching on my Windows computer via Windows Media Player
+rtmp://192.168.0.50:1935/live/stream
 ```
 
-If `127.0.0.1` does not work, try `0.0.0.0`.
-
-To stop the running services on the server (Raspberry Pi), run:
+To stop the stream, run the following command:
 ```bash
 ./stop.sh
 ```
 
-To stop the running services on the client, run:
+To stop nginx, run the following command:
 ```bash
 docker compose down
 ```

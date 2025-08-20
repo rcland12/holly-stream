@@ -6,4 +6,4 @@ RUN apt update -y && \
     pip3 install --no-cache-dir --upgrade wheel setuptools && \
     pip3 install --no-cache-dir torch torchvision python-dotenv opencv-python
 
-CMD ["sh", "-c", "tritonserver --model-repository=${MODEL_REPOSITORY}"]
+CMD ["sh", "-c", "tritonserver --model-repository=${MODEL_REPOSITORY} --allow-http=false --allow-metrics=false"]

@@ -1,8 +1,7 @@
 services:
   triton:
     image: rcland12/detection-stream:raspbian-triton-latest
-    build:
-      context: ./triton
+    build: ./triton
     network_mode: host
     shm_size: 128mb
     volumes:
@@ -16,14 +15,14 @@ services:
   
   nginx-stream:
     image: rcland12/detection-stream:nginx-latest
-    build:
-      context: ./nginx
-    network_mode: "host"
+    build: ./nginx
+    network_mode: host
     volumes:
-      - "${PWD}/nginx/nginx-stream/nginx.conf:/etc/nginx/nginx.conf"
+      - ./nginx/nginx-stream/nginx.conf:/etc/nginx/nginx.conf
   
   nginx-web:
     image: rcland12/detection-stream:nginx-latest
-    build:
-      context: ./nginx
-    network_mode: "host"
+    build: ./nginx
+    network_mode: host
+    volumes:
+      - ./nginx/nginx-web/nginx.conf:/etc/nginx/nginx.conf
