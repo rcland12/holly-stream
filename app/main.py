@@ -485,7 +485,7 @@ def main(
 if __name__ == "__main__":
     load_dotenv()
     parser = EnvArgumentParser()
-    parser.add_arg("TRITON_URL", default="grpc://localhost:8001", d_type=str)
+    parser.add_arg("TRITON_URL", default="http://localhost:8000", d_type=str)
     parser.add_arg("MODEL_NAME", default="yolov8n", d_type=str)
     parser.add_arg("STREAM_IP", default="127.0.0.1", d_type=str)
     parser.add_arg("STREAM_PORT", default=1935, d_type=int)
