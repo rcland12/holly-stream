@@ -1,4 +1,4 @@
-FROM debian:bullseye-slim
+FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -7,20 +7,29 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /root/app
 
 RUN apt-get update && \
-    apt-get install -y \
-        python3.10 \
-        python3-pip \
-        ffmpeg && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    pip3 install --no-cache-dir --upgrade pip && \
-    pip3 install --no-cache-dir \
-        python-dotenv \
-        opencv-python \
+    apt-get install -y --no-install-recommends \
+        alsa-utils \
+        ca-certificates \
+        curl \
+        ffmpeg \
+        libasound2 \
+        libasound2-plugins \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        v4l-utils && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN python -m pip install --upgrade pip setuptools wheel && \
+    python -m pip install --no-cache-dir \
         imutils \
-        tritonclient[all]
+        opencv-python-headless \
+        python-dotenv \
+        "tritonclient[all]"
 
 COPY main.py stream.sh entrypoint.sh ./
 COPY ./images/ ./images/
+RUN chmod +x entrypoint.sh stream.sh
 
 CMD ["/bin/bash", "entrypoint.sh"]

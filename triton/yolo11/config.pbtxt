@@ -1,6 +1,6 @@
 name: "yolo11"
 platform: "ensemble"
-max_batch_size: 0
+max_batch_size: 8
 
 input [
   {
@@ -12,10 +12,15 @@ input [
 
 output [
   {
-    name: "bounding_boxes"
+    name: "boxes"
     data_type: TYPE_FP32
-    dims: [ -1, -1 ]
+    dims: [ -1, 6 ]
     label_filename: "labels.txt"
+  },
+  {
+    name: "num_dets"
+    data_type: TYPE_INT32
+    dims: [ 1 ]
   }
 ]
 
@@ -53,8 +58,12 @@ ensemble_scheduling {
         value: "detections"
       }
       output_map {
-        key: "bounding_boxes"
-        value: "bounding_boxes"
+        key: "boxes"
+        value: "boxes"
+      }
+      output_map {
+        key: "num_dets"
+        value: "num_dets"
       }
     }
   ]

@@ -14,7 +14,7 @@ if [[ "${OBJECT_DETECTION}" == "True" ]]; then
     
     echo "Waiting to start Holly Stream until Triton is healthy."
     for ((attempt=1; attempt<=60; attempt++)); do
-        if curl -s -f "http://localhost:8000/v2/health/ready" > /dev/null; then
+        if docker compose exec -it triton curl -s -f "http://localhost:8000/v2/health/ready" > /dev/null; then
             break
         fi
         sleep 1
@@ -26,11 +26,19 @@ docker compose up -d app
 echo "Holly Stream has started. Performing health check..."
 sleep 10
 
-if docker container inspect -f '{{.State.Running}}' app &>/dev/null; then
-    echo "Holly Stream STATUS: HEALTHY"
-else
-    echo "Holly Stream STATUS: UNHEALTHY"
-    echo "Shutting down."
-    [[ "${OBJECT_DETECTION}" == "True" ]] && docker compose down triton
-    exit 1
-fi
+for i in {1..12}; do
+    if [ "$( docker container inspect -f '{{.State.Running}}' holly-stream-app )" = "true" ]; then
+        echo "Holly Stream STATUS: HEALTHY"
+        break
+    elif [ $i -eq 12 ]; then
+        echo "Holly STREAM STATUS: UNHEALTHY"
+        echo "Shutting down."
+        docker compose down
+        exit 1
+    else
+        echo "Health check attempt: $i/12"
+        sleep 5
+    fi
+done
+
+echo "System running."

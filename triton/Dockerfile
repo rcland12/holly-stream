@@ -60,7 +60,7 @@ RUN userdel tensorrt-server > /dev/null 2>&1 || true && \
     ldconfig && \
     rm -f ${_CUDA_COMPAT_PATH}/lib && \
     pip3 install --no-cache-dir --upgrade pip && \
-    pip3 install --no-cache-dir torch torchvision python-dotenv numpy==1.26.4 && \
+    pip3 install --no-cache-dir torch==2.7.1 torchvision==0.22.1 python-dotenv numpy==1.26.4 && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf /opt/tritonserver/*
 
@@ -69,12 +69,14 @@ WORKDIR /opt/tritonserver
 COPY --chown=1000:1000 --from=full /opt/tritonserver/bin bin/
 COPY --chown=1000:1000 --from=full /opt/tritonserver/lib lib/
 COPY --chown=1000:1000 --from=full /opt/tritonserver/include include/
-COPY --chown=1000:1000 --from=full /opt/tritonserver/backends/python /opt/tritonserver/backends/python/
 COPY --chown=1000:1000 --from=full /opt/tritonserver/backends/tensorrt /opt/tritonserver/backends/tensorrt/
+COPY --chown=1000:1000 --from=full /opt/tritonserver/backends/pytorch /opt/tritonserver/backends/pytorch/
 COPY --chown=1000:1000 --from=full /opt/tritonserver/repoagents/checksum /opt/tritonserver/repoagents/checksum/
 COPY --chown=1000:1000 --from=full /usr/bin/serve /usr/bin/.
 
 RUN chown triton-server:triton-server /opt/tritonserver/backends && \
     chown triton-server:triton-server /opt/tritonserver/repoagents
+
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/cuda_runtime/lib:$LD_LIBRARY_PATH
 
 CMD ["/bin/sh", "-c", "tritonserver --model-repository=${MODEL_REPOSITORY} --allow-metrics=false"]

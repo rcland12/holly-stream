@@ -1,4 +1,5 @@
 import os
+
 import cv2
 
 
@@ -15,14 +16,16 @@ def check_save_path(save_path: str, start_index: int) -> int:
         start_index (int): Unless there are already images present, it will return the start_index that was input.
     """
     if not os.path.isdir(save_path):
-        os.system(f'mkdir {save_path}')
+        os.system(f"mkdir {save_path}")
 
     else:
         files = os.listdir(save_path)
 
         if files:
             numbers = [
-                int(file.split("_")[1].split(".")[0]) if "png" in file else None
+                int(file.split("_")[1].split(".")[0])
+                if "png" in file
+                else None
                 for file in files
             ]
             max_number = max(list(filter(None, numbers)))
@@ -39,7 +42,7 @@ def check_save_path(save_path: str, start_index: int) -> int:
                         start_index = max_number + 1
                     case "n":
                         pass
-                    case _ :
+                    case _:
                         print("Invalid user input. Enter 'y' or 'n'.")
                         exit(1)
 
@@ -53,7 +56,7 @@ def main(
     period: int = 5,
     camera_index: int = 0,
     camera_width: int = 1280,
-    camera_height: int = 720
+    camera_height: int = 720,
 ) -> None:
     """
     This function will take pictures from your camera source every x seconds to collect data for training.
@@ -101,20 +104,20 @@ def main(
             frame_index += 1
 
         print(f"Saved {number_to_save} picture to `{save_path}` successfully.")
-    
+
     finally:
         camera.release()
-    
+
     return
 
 
 if __name__ == "__main__":
     main(
         save_path="../data/",
-        number_to_save=200,
+        number_to_save=400,
         start_index=0,
-        period=5,
+        period=1,
         camera_index=0,
         camera_width=1280,
-        camera_height=720
+        camera_height=720,
     )
