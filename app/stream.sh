@@ -21,7 +21,7 @@ STREAM_PORT="${STREAM_PORT:-1935}"
 STREAM_APPLICATION="${STREAM_APPLICATION:-live}"
 STREAM_KEY="${STREAM_KEY:-stream}"
 VIDEO_BITRATE="${VIDEO_BITRATE:-6000k}"
-VIDEO_QUALITY="${VIDEO_QUALITY:-high}"
+STREAM_QUALITY="${STREAM_QUALITY:-high}"
 AUDIO_DEVICE="${AUDIO_DEVICE:-}"
 USE_ENCODER="${USE_ENCODER:-cpu}"
 RESTART_DELAY="${RESTART_DELAY:-3}"
@@ -33,58 +33,58 @@ echo -e "${YELLOW}CAMERA_HEIGHT=${CAMERA_HEIGHT}${NC}"
 echo -e "${YELLOW}CAMERA_INDEX=${CAMERA_INDEX}${NC}"
 echo -e "${YELLOW}CAMERA_FPS=${CAMERA_FPS}${NC}"
 echo -e "${YELLOW}STREAM=${STREAM_IP}:${STREAM_PORT}/${STREAM_APPLICATION}/${STREAM_KEY}${NC}"
-echo -e "${YELLOW}VIDEO_QUALITY=${VIDEO_QUALITY}${NC}"
+echo -e "${YELLOW}STREAM_QUALITY=${STREAM_QUALITY}${NC}"
 echo -e "${YELLOW}VIDEO_BITRATE=${VIDEO_BITRATE}${NC}"
 echo -e "${YELLOW}AUDIO_DEVICE=${AUDIO_DEVICE}${NC}"
 echo -e "${YELLOW}USE_ENCODER=${USE_ENCODER}${NC}"
 
 set_quality_presets() {
-  case "$VIDEO_QUALITY" in
+  case "$STREAM_QUALITY" in
     ultra)
-        CPU_PRESET="slow"
-        NVENC_PRESET="p7"
-        NVENC_RC="vbr"
-        NVENC_CQ="19"
-        VIDEO_BITRATE="10000k"
-        MAX_BITRATE="12000k"
-        BUFFER_SIZE="20000k"
-        ;;
+      CPU_PRESET="slow"
+      NVENC_PRESET="p7"
+      NVENC_RC="vbr"
+      NVENC_CQ="19"
+      VIDEO_BITRATE="10000k"
+      MAX_BITRATE="12000k"
+      BUFFER_SIZE="20000k"
+      ;;
     high)
-        CPU_PRESET="medium"
-        NVENC_PRESET="p5"
-        NVENC_RC="vbr"
-        NVENC_CQ="23"
-        VIDEO_BITRATE="6000k"
-        MAX_BITRATE="8000k"
-        BUFFER_SIZE="12000k"
-        ;;
+      CPU_PRESET="medium"
+      NVENC_PRESET="p5"
+      NVENC_RC="vbr"
+      NVENC_CQ="23"
+      VIDEO_BITRATE="6000k"
+      MAX_BITRATE="8000k"
+      BUFFER_SIZE="12000k"
+      ;;
     medium)
-        CPU_PRESET="veryfast"
-        NVENC_PRESET="p4"
-        NVENC_RC="cbr"
-        NVENC_CQ="27"
-        VIDEO_BITRATE="3000k"
-        MAX_BITRATE="4000k"
-        BUFFER_SIZE="6000k"
-        ;;
+      CPU_PRESET="veryfast"
+      NVENC_PRESET="p4"
+      NVENC_RC="cbr"
+      NVENC_CQ="27"
+      VIDEO_BITRATE="3000k"
+      MAX_BITRATE="4000k"
+      BUFFER_SIZE="6000k"
+      ;;
     low)
-        CPU_PRESET="ultrafast"
-        NVENC_PRESET="p2"
-        NVENC_RC="cbr"
-        NVENC_CQ="30"
-        VIDEO_BITRATE="1500k"
-        MAX_BITRATE="2000k"
-        BUFFER_SIZE="3000k"
-        ;;
+      CPU_PRESET="ultrafast"
+      NVENC_PRESET="p2"
+      NVENC_RC="cbr"
+      NVENC_CQ="30"
+      VIDEO_BITRATE="1500k"
+      MAX_BITRATE="2000k"
+      BUFFER_SIZE="3000k"
+      ;;
     *)
-        CPU_PRESET="medium"
-        NVENC_PRESET="p5"
-        NVENC_RC="vbr"
-        NVENC_CQ="23"
-        VIDEO_BITRATE="6000k"
-        MAX_BITRATE="8000k"
-        BUFFER_SIZE="12000k"
-        ;;
+      CPU_PRESET="medium"
+      NVENC_PRESET="p5"
+      NVENC_RC="vbr"
+      NVENC_CQ="23"
+      VIDEO_BITRATE="6000k"
+      MAX_BITRATE="8000k"
+      BUFFER_SIZE="12000k"
+      ;;
   esac
 }
 
@@ -100,34 +100,34 @@ fi
 build_encoding_params() {
   case "$1" in
     nvenc)
-        echo "-c:v h264_nvenc \
-        -preset:v $NVENC_PRESET \
-        -tune:v hq \
-        -rc:v $NVENC_RC \
-        -rc-lookahead:v 32 \
-        -spatial-aq:v 1 \
-        -temporal-aq:v 1 \
-        -cq:v $NVENC_CQ \
-        -b:v $VIDEO_BITRATE \
-        -maxrate:v $MAX_BITRATE \
-        -bufsize:v $BUFFER_SIZE \
-        -profile:v high \
-        -level:v 4.2 \
-        -coder:v cabac \
-        -b_ref_mode:v middle \
-        -dpb_size:v 4"
-        ;;
+      echo "-c:v h264_nvenc \
+      -preset:v $NVENC_PRESET \
+      -tune:v hq \
+      -rc:v $NVENC_RC \
+      -rc-lookahead:v 32 \
+      -spatial-aq:v 1 \
+      -temporal-aq:v 1 \
+      -cq:v $NVENC_CQ \
+      -b:v $VIDEO_BITRATE \
+      -maxrate:v $MAX_BITRATE \
+      -bufsize:v $BUFFER_SIZE \
+      -profile:v high \
+      -level:v 4.2 \
+      -coder:v cabac \
+      -b_ref_mode:v middle \
+      -dpb_size:v 4"
+      ;;
     *)
-        echo "-c:v libx264 \
-        -preset:v $CPU_PRESET \
-        -tune:v zerolatency \
-        -profile:v high \
-        -level:v 4.2 \
-        -crf 23 \
-        -b:v $VIDEO_BITRATE \
-        -maxrate:v $MAX_BITRATE \
-        -bufsize:v $BUFFER_SIZE"
-        ;;
+      echo "-c:v libx264 \
+      -preset:v $CPU_PRESET \
+      -tune:v zerolatency \
+      -profile:v high \
+      -level:v 4.2 \
+      -crf 23 \
+      -b:v $VIDEO_BITRATE \
+      -maxrate:v $MAX_BITRATE \
+      -bufsize:v $BUFFER_SIZE"
+      ;;
   esac
 }
 
