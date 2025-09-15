@@ -113,6 +113,7 @@ class TritonClient:
     Raises:
         RuntimeError: If an unsupported protocol is used (other than HTTP or GRPC).
     """
+
     def __init__(self, url: str, model: str):
         """
         Initialize the TritonClient instance.
@@ -121,71 +122,75 @@ class TritonClient:
             url (str): The URL of the Triton Inference Server.
             model (str): The name of the model to be used for inference.
         """
+
+        self.model_name: str = model
+
         parsed_url = urlparse(url)
         if parsed_url.scheme == "grpc":
             from tritonclient.grpc import InferenceServerClient, InferInput
 
-            self.client: InferenceServerClient = InferenceServerClient(parsed_url.netloc)
-            self.model_name: str = model
-            self.metadata: dict = self.client.get_model_metadata(self.model_name, as_json=True)
-            self.config: dict = self.client.get_model_config(self.model_name, as_json=True)["config"]
+            self.client: InferenceServerClient = InferenceServerClient(
+                parsed_url.netloc
+            )
+            self.metadata: dict = self.client.get_model_metadata(
+                self.model_name, as_json=True
+            )
+            self.config: dict = self.client.get_model_config(
+                self.model_name, as_json=True
+            )["config"]
 
             def create_input_placeholders() -> List[InferInput]:
                 return [
-                    InferInput(
-                        i['name'],
-                        [int(s) for s in i['shape']],
-                        i['datatype']
-                    )
-                    for i in self.metadata['inputs']
+                    InferInput(i["name"], [int(s) for s in i["shape"]], i["datatype"])
+                    for i in self.metadata["inputs"]
                 ]
 
         elif parsed_url.scheme == "http":
             from tritonclient.http import InferenceServerClient, InferInput
 
-            self.client: InferenceServerClient = InferenceServerClient(parsed_url.netloc)
-            self.model_name: str = model
+            self.client: InferenceServerClient = InferenceServerClient(
+                parsed_url.netloc
+            )
             self.metadata: dict = self.client.get_model_metadata(self.model_name)
             self.config: dict = self.client.get_model_config(self.model_name)
 
             def create_input_placeholders() -> List[InferInput]:
                 return [
-                    InferInput(
-                        i['name'],
-                        [int(s) for s in i['shape']],
-                        i['datatype']
-                    )
-                    for i in self.metadata['inputs']
+                    InferInput(i["name"], [int(s) for s in i["shape"]], i["datatype"])
+                    for i in self.metadata["inputs"]
                 ]
 
         else:
             raise RuntimeError("Unsupported protocol. Use HTTP or GRPC.")
 
         self._create_input_placeholders_fn = create_input_placeholders
+        self.output_name: str = self.metadata["outputs"][0]["name"]
         self.model_dims: Tuple[int, int] = self._get_dims()
         self.classes: Optional[List[str]] = self._get_classes()
 
-    def __call__(self, *args) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
+    def __call__(self, *args: Any) -> Tuple[List[List[float]], List[float], List[int]]:
         """
-        Perform inference on the provided inputs.
+        Perform inference on the provided inputs and return bounding boxes, confidence scores, and class indexes.
 
         Args:
-            *args: The input arguments for the model.
+            *args: Input arguments for the model. Expected format depends on the model configuration
+                and should be compatible with self._create_inputs().
 
         Returns:
-            Union[torch.Tensor, Tuple[torch.Tensor, ...]]: The inference results.
+            Tuple containing:
+                - List[List[float]]: Bounding boxes, where each box is [x1, y1, x2, y2]
+                - List[float]: Confidence scores rounded to 2 decimal places
+                - List[int]: Class indexes
 
         Raises:
             RuntimeError: If no inputs are provided or if the number of inputs does not match the expected number.
         """
+
         inputs = self._create_inputs(*args)
         response = self.client.infer(model_name=self.model_name, inputs=inputs)
-        result: List[torch.Tensor] = []
-        for output in self.metadata['outputs']:
-            tensor = torch.tensor(response.as_numpy(output['name']))
-            result.append(tensor)
-        
-        predictions = result[0].tolist()
+        predictions = response.as_numpy(self.output_name).tolist()
+        print(predictions)
+
         bboxes = [item[:4] for item in predictions]
         confs = [round(float(item[4]), 2) for item in predictions]
         indexes = [int(item[5]) for item in predictions]
@@ -205,6 +210,7 @@ class TritonClient:
         Raises:
             RuntimeError: If no inputs are provided or if the number of inputs does not match the expected number.
         """
+
         args_len = len(args)
         if not args_len:
             raise RuntimeError("No inputs provided.")
@@ -213,7 +219,9 @@ class TritonClient:
 
         if args_len:
             if args_len != len(placeholders):
-                raise RuntimeError(f"Expected {len(placeholders)} inputs, got {args_len}.")
+                raise RuntimeError(
+                    f"Expected {len(placeholders)} inputs, got {args_len}."
+                )
             for input, value in zip(placeholders, args):
                 input.set_data_from_numpy(value)
 
@@ -226,9 +234,13 @@ class TritonClient:
         Returns:
             Optional[List[str]]: The list of class labels, or None if not available.
         """
+
         label_filename = self.config["output"][0]["label_filename"]
         docker_file_path = f"/root/app/triton/{self.model_name}/{label_filename}"
-        local_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{self.model_name}/{label_filename}")
+        local_file_path = os.path.join(
+            os.path.abspath(os.getcwd()),
+            f"triton/{self.model_name}/{label_filename}",
+        )
 
         if os.path.isfile(docker_file_path):
             with open(docker_file_path, "r") as file:
@@ -248,10 +260,11 @@ class TritonClient:
         Returns:
             Tuple[int, int]: The dimensions of the model input.
         """
+
         try:
             model_dims = tuple(self.config["input"][0]["dims"][2:4])
             return tuple(map(int, model_dims))
-        except:
+        except Exception:
             return (640, 640)
 
 
@@ -478,11 +491,10 @@ def main(
     return
 
 
-
 if __name__ == "__main__":
     load_dotenv()
     parser = EnvArgumentParser()
-    parser.add_arg("TRITON_URL", default="grpc://localhost:8001", d_type=str)
+    parser.add_arg("TRITON_URL", default="http://localhost:8000", d_type=str)
     parser.add_arg("MODEL_NAME", default="yolov5s", d_type=str)
     parser.add_arg("STREAM_IP", default="127.0.0.1", d_type=str)
     parser.add_arg("STREAM_PORT", default=1935, d_type=int)

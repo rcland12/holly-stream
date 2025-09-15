@@ -1,14 +1,45 @@
-version: "3"
+version: "3.8"
+
+networks:
+  backend:
+    driver: bridge
+  triton:
+    driver: bridge
 
 services:
+  app:
+    container_name: holly-stream-app
+    image: rcland12/detection-stream:jetson-latest
+    build:
+      context: ./app
+    privileged: true
+    group_add:
+      - audio
+    networks:
+      - backend
+      - triton
+    ports:
+      - "${STREAM_PORT:-1935}:${STREAM_PORT:-1935}"
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/snd:/dev/snd
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /tmp/argus_socket:/tmp/argus_socket
+      - ./triton:/root/app/triton
+    env_file: .env
+    runtime: nvidia
+
   triton:
+    container_name: holly-stream-triton
     image: rcland12/detection-stream:jetson-triton-latest
     build:
       context: ./triton
-    network_mode: host
-    shm_size: 128mb
+    networks:
+      - triton
+    shm_size: 512mb
     volumes:
-      - ./triton:/root/app/triton
+      - ./triton:/models
     env_file: .env
     runtime: nvidia
     healthcheck:
@@ -17,43 +48,34 @@ services:
       timeout: 20s
       retries: 6
 
-  app:
-    image: rcland12/detection-stream:jetson-latest
-    build:
-      context: ./app
-    network_mode: host
-    devices:
-      - /dev/video0:/dev/video0
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix
-      - /tmp/argus_socket:/tmp/argus_socket
-      - ./triton:/root/app/triton
-    env_file: .env
-    restart: unless-stopped
-
   nginx-stream:
+    container_name: holly-stream-nginx-stream
     image: rcland12/detection-stream:nginx-latest
     build:
       context: ./nginx
-    network_mode: host
-    volumes:
-      - ./nginx/nginx-stream/nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - backend
+    ports:
+      - ${STREAM_PORT}:${STREAM_PORT}
     healthcheck:
-      test: [ "CMD", "service", "nginx", "status" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8080", "||", "exit", "1"]
       interval: 30s
       timeout: 20s
       retries: 3
+      start_period: 10s
 
   nginx-web:
+    container_name: holly-stream-nginx-web
     image: rcland12/detection-stream:nginx-latest
     build:
       context: ./nginx
-    network_mode: host
-    volumes:
-      - ./nginx/nginx-web/nginx.conf:/etc/nginx/nginx.conf
-      - ./nginx/stream:/var/www/html/stream
+    networks:
+      - backend
+    ports:
+      - 8080:8080
     healthcheck:
-      test: [ "CMD", "service", "nginx", "status" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8080", "||", "exit", "1"]
       interval: 30s
       timeout: 20s
       retries: 3
+      start_period: 10s

@@ -1,4 +1,5 @@
 import os
+import json
 import torch
 import numpy as np
 import triton_python_backend_utils as pb_utils
@@ -140,6 +141,11 @@ def non_max_suppression(
 
 class TritonPythonModel:
     def initialize(self, args: Dict[str, Any]) -> None:
+        self.model_name: str = args["model_name"]
+        model_config = json.loads(args["model_config"])
+        self.inputs: List[str] = [input["name"] for input in model_config["input"]]
+        self.outputs: List[str] = [output["name"] for output in model_config["output"]]
+
         load_dotenv()
         parser = EnvArgumentParser()
         parser.add_arg("CAMERA_WIDTH", default=640, type=int)
@@ -162,8 +168,12 @@ class TritonPythonModel:
     def execute(self, requests: List[pb_utils.InferenceRequest]) -> List[pb_utils.InferenceResponse]:
         responses = []
         for request in requests:
+            input1 = from_dlpack(pb_utils.get_input_tensor_by_name(request, self.inputs[0]).to_dlpack())
+            print(input1, flush=True)
+            print(input1.shape, flush=True)
+
             results = non_max_suppression(
-                from_dlpack(pb_utils.get_input_tensor_by_name(request, "INPUT_0").to_dlpack()),
+                from_dlpack(pb_utils.get_input_tensor_by_name(request, self.inputs[0]).to_dlpack()),
                 img0_shape=(self.camera_width, self.camera_height),
                 img1_shape=self.model_dims,
                 conf_thres=self.conf_thres,
@@ -171,11 +181,12 @@ class TritonPythonModel:
                 classes=self.classes,
                 normalize=self.santa_hat_plugin
             )
+            print(results, flush=True)
 
             responses.append(
                 pb_utils.InferenceResponse(
                     output_tensors=[
-                        pb_utils.Tensor("OUTPUT_0", results)
+                        pb_utils.Tensor(self.outputs[0], results)
                     ]
                 )
             )
@@ -183,4 +194,8 @@ class TritonPythonModel:
         return responses
 
     def finalize(self) -> None:
-        print('Cleaning up postprocess model...')
+        """
+        Clean up resources when the model is being unloaded.
+        """
+
+        print(f"Cleaning up {self.model_name}...", flush=True)

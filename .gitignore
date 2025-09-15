@@ -4,9 +4,9 @@
 # custom files
 *.m3u8
 stream-*.ts
-tritonserver/
 data/
 holly/
+triton_gpu/
 
 ### Linux ###
 *~

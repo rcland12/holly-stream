@@ -76,8 +76,12 @@ def letterbox(
 
 class TritonPythonModel:
     def initialize(self, args: Dict[str, Any]) -> None:
+        self.model_name: str = args["model_name"]
         model_config = json.loads(args["model_config"])
-        OUTPUT_0_config = pb_utils.get_output_config_by_name(model_config, "OUTPUT_0")
+        self.inputs: List[str] = [input["name"] for input in model_config["input"]]
+        self.outputs: List[str] = [output["name"] for output in model_config["output"]]
+        OUTPUT_0_config = pb_utils.get_output_config_by_name(model_config, self.outputs[0])
+        self.output_type = pb_utils.triton_string_to_numpy(OUTPUT_0_config["data_type"])
 
         load_dotenv()
         parser = EnvArgumentParser()
@@ -85,13 +89,12 @@ class TritonPythonModel:
         args = parser.parse_args()
 
         self.model_dims = args.MODEL_DIMS
-        self.output_type = pb_utils.triton_string_to_numpy(OUTPUT_0_config["data_type"])
 
     def execute(self, requests: List[pb_utils.InferenceRequest]) -> List[pb_utils.InferenceResponse]:
         responses = []
         for request in requests:
             img = letterbox(
-                image=pb_utils.get_input_tensor_by_name(request, "INPUT_0").as_numpy(),
+                image=pb_utils.get_input_tensor_by_name(request, self.inputs[0]).as_numpy(),
                 new_shape=self.model_dims,
                 output_type=self.output_type
             )
@@ -101,7 +104,7 @@ class TritonPythonModel:
                 pb_utils.InferenceResponse(
                     output_tensors=[
                         pb_utils.Tensor(
-                            "OUTPUT_0",
+                            self.outputs[0],
                             img[None]
                         )
                     ]
@@ -111,4 +114,8 @@ class TritonPythonModel:
         return responses
 
     def finalize(self) -> None:
-        print('Cleaning up preprocess model...')
+        """
+        Clean up resources when the model is being unloaded.
+        """
+
+        print(f"Cleaning up {self.model_name}...", flush=True)
