@@ -1,53 +1,45 @@
 name: "postprocess"
-backend: "python"
-max_batch_size: 0
+backend: "pytorch"
+max_batch_size: 8
 
 input [
   {
     name: "detections"
-    data_type: TYPE_FP16
-    dims: [ 1, 84, 8400 ]
+    data_type: TYPE_FP32
+    dims: [ 84, 8400 ]
   }
 ]
 
 output [
   {
-    name: "bounding_boxes"
+    name: "boxes"
     data_type: TYPE_FP32
-    dims: [ -1, 6 ]
+    dims: [ 300, 6 ]
+  },
+  {
+    name: "num_dets"
+    data_type: TYPE_INT32
+    dims: [ 1 ]
   }
 ]
 
 instance_group [
   {
-    count: 1
     kind: KIND_GPU
     gpus: [ 0 ]
+    count: 1
   }
 ]
 
-parameters [
-  {
-    key: "CUDA_VISIBLE_DEVICES"
-    value: { string_value: "0" }
-  },
-  {
-    key: "use_cuda_shared_memory"
-    value: { string_value: "true" }
-  },
-  {
-    key: "FORCE_CPU_ONLY_INPUT_TENSORS"
-    value: { string_value: "no" }
-  }
-]
+dynamic_batching {
+  preferred_batch_size: [ 1, 2, 4 ]
+  max_queue_delay_microseconds: 800
+}
 
 optimization {
   execution_accelerators {
-    gpu_execution_accelerator : [{
-      name : "tensorrt"
-      parameters: { key: "precision_mode" value: "FP16" }
-      parameters: { key: "max_workspace_size_bytes" value: "1073741824" }
-    }]
+    gpu_execution_accelerator: [{ name: "pytorch"
+      parameters { key: "enable_cuda_graph" value: "true" } }]
   }
 }
 

@@ -6,6 +6,7 @@
 stream-*.ts
 *.plan
 *.onnx
+*.pt
 data/
 holly/
 
