@@ -77,15 +77,15 @@ RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/${OPENCV_VERSION
 RUN python3 -m pip install --upgrade pip && \
     python3 -m pip install setuptools && \
     python3 -m pip install --no-cache-dir \
-        attrdict \
-        Cython \
-        future \
-        grpcio-tools \
-        imutils \
+        attrdict==2.0.1 \
+        Cython==3.0.12 \
+        future==1.0.0 \
+        grpcio-tools==1.48.2 \
+        imutils==0.5.4 \
         numpy==1.19.4 \
-        nanocamera \
+        nanocamera==0.1.5 \
         pillow==8.4.0 \
-        python-dotenv && \
+        python-dotenv==0.20.0 && \
     wget https://nvidia.box.com/shared/static/p57jwntv436lfrd78inwl7iml6p13fzh.whl \
         -O torch-${PYTORCH_VERSION}-cp36-cp36m-linux_aarch64.whl && \
     python3 -m pip install --no-cache-dir torch-${PYTORCH_VERSION}-cp36-cp36m-linux_aarch64.whl && \

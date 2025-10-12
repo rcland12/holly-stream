@@ -8,7 +8,7 @@ if [ -z $OBJECT_DETECTION ]; then echo "The environment variable OBJECT_DETECTIO
 
 if [[ "${OBJECT_DETECTION}" == "True" ]]; then
     docker-compose up -d triton
-    
+
     echo "Waiting to start Holly Stream until Triton is healthy."
     for ((attempt=1; attempt<=60; attempt++)); do
         if docker-compose exec triton curl -s -f "http://localhost:8000/v2/health/ready" > /dev/null; then

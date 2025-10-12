@@ -93,15 +93,15 @@ RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/${OPENCV_VERSION
 RUN python3 -m pip install --upgrade pip && \
     python3 -m pip install setuptools && \
     python3 -m pip install --no-cache-dir \
-        attrdict \
-        Cython \
-        future \
-        grpcio-tools \
-        imutils \
-        nanocamera \
+        attrdict==2.0.1 \
+        Cython==3.0.12 \
+        future==1.0.0 \
+        grpcio-tools==1.48.2 \
+        imutils==0.5.4 \
+        nanocamera==0.1.5 \
         numpy==1.19.4 \
         pillow==8.4.0 \
-        python-dotenv && \
+        python-dotenv==0.20.0 && \
     wget https://nvidia.box.com/shared/static/p57jwntv436lfrd78inwl7iml6p13fzh.whl \
         -O torch-${PYTORCH_VERSION}-cp36-cp36m-linux_aarch64.whl && \
     python3 -m pip install --no-cache-dir torch-${PYTORCH_VERSION}-cp36-cp36m-linux_aarch64.whl && \
@@ -126,4 +126,4 @@ ENV LD_LIBRARY_PATH=/opt/tritonserver/backends/python:$LD_LIBRARY_PATH
 ENV LD_LIBRARY_PATH=/opt/tritonserver/backends/tensorrt:$LD_LIBRARY_PATH
 ENV PATH=$PATH:/opt/tritonserver/bin
 
-CMD ["/bin/sh", "-c", "tritonserver --model-repository=/models --allow-grpc=false --allow-metrics=false"]
+CMD ["/bin/sh", "-c", "tritonserver --model-repository=/models --cuda-memory-pool-byte-size=0:268435456 --pinned-memory-pool-byte-size=134217728 --response-cache-byte-size=0 --allow-metrics=false"]

@@ -37,7 +37,10 @@ services:
       context: ./triton
     networks:
       - triton
-    shm_size: 512mb
+    ports:
+      - 8000:8000
+      - 8001:8001
+    shm_size: 256mb
     volumes:
       - ./triton:/models
     env_file: .env

@@ -1,4 +1,4 @@
-name: "yolov5s"
+name: "yolo11"
 platform: "ensemble"
 max_batch_size: 0
 
@@ -12,10 +12,25 @@ input [
 
 output [
   {
-    name: "bounding_boxes"
+    name: "nms_num_dets"
+    data_type: TYPE_INT32
+    dims: [ 1, 1 ]
+    label_filename: "labels.txt"
+  },
+  {
+    name: "nms_boxes"
     data_type: TYPE_FP32
-    dims: [ -1, -1 ]
-    label_filename: "yolov5_labels.txt"
+    dims: [ 1, 100, 4 ]
+  },
+  {
+    name: "nms_scores"
+    data_type: TYPE_FP32
+    dims: [ 1, 100 ]
+  },
+  {
+    name: "nms_classes"
+    data_type: TYPE_INT32
+    dims: [ 1, 100 ]
   }
 ]
 
@@ -41,20 +56,20 @@ ensemble_scheduling {
         value: "resized_image"
       }
       output_map {
-        key: "output0"
-        value: "detections"
-      }
-    },
-    {
-      model_name: "postprocess"
-      model_version: -1
-      input_map {
-        key: "detections"
-        value: "detections"
+        key: "nms_num_dets"
+        value: "nms_num_dets"
       }
       output_map {
-        key: "bounding_boxes"
-        value: "bounding_boxes"
+        key: "nms_boxes"
+        value: "nms_boxes"
+      }
+      output_map {
+        key: "nms_scores"
+        value: "nms_scores"
+      }
+      output_map {
+        key: "nms_classes"
+        value: "nms_classes"
       }
     }
   ]
@@ -62,8 +77,4 @@ ensemble_scheduling {
 
 version_policy: { 
   latest: { num_versions: 1 }
-}
-
-response_cache { 
-  enable: True 
 }

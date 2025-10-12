@@ -164,17 +164,24 @@ class TritonClient:
             raise RuntimeError("Unsupported protocol. Use HTTP or GRPC.")
 
         self._create_input_placeholders_fn = create_input_placeholders
-        self.output_name: str = self.metadata["outputs"][0]["name"]
         self.model_dims: Tuple[int, int] = self._get_dims()
         self.classes: Optional[List[str]] = self._get_classes()
 
-    def __call__(self, *args: Any) -> Tuple[List[List[float]], List[float], List[int]]:
+    def __call__(
+        self, frame: np.ndarray, original_shape: Optional[Tuple[int, int]] = None
+    ) -> Tuple[List[List[float]], List[float], List[int]]:
         """
-        Perform inference on the provided inputs and return bounding boxes, confidence scores, and class indexes.
+        Run inference and parse NMS detection outputs.
+
+        Expects the model to produce outputs:
+        - "nms_num_dets": [1, 1] number of valid detections
+        - "nms_boxes": [1, N, 4] bounding boxes as [x1, y1, x2, y2]
+        - "nms_scores": [1, N] confidence scores
+        - "nms_classes": [1, N] class indices
 
         Args:
-            *args: Input arguments for the model. Expected format depends on the model configuration
-                and should be compatible with self._create_inputs().
+            frame (np.ndarray): Input frame for inference.
+            original_shape: Optional (height, width) of original image for rescaling boxes.
 
         Returns:
             Tuple containing:
@@ -183,19 +190,70 @@ class TritonClient:
                 - List[int]: Class indexes
 
         Raises:
-            RuntimeError: If no inputs are provided or if the number of inputs does not match the expected number.
+            RuntimeError: If expected outputs are missing.
         """
-
-        inputs = self._create_inputs(*args)
+        inputs = self._create_inputs(frame)
+        
         response = self.client.infer(model_name=self.model_name, inputs=inputs)
-        predictions = response.as_numpy(self.output_name).tolist()
-        print(predictions)
 
-        bboxes = [item[:4] for item in predictions]
-        confs = [round(float(item[4]), 2) for item in predictions]
-        indexes = [int(item[5]) for item in predictions]
+        num_dets = response.as_numpy("nms_num_dets")
+        boxes = response.as_numpy("nms_boxes")
+        scores = response.as_numpy("nms_scores")
+        classes = response.as_numpy("nms_classes")
+
+        if boxes is None or scores is None or classes is None:
+            raise RuntimeError("Triton response missing required NMS outputs.")
+
+        # Extract number of valid detections
+        n = int(num_dets.reshape(-1)[0]) if num_dets is not None else boxes.shape[1]
+        n = max(0, min(n, boxes.shape[1]))
+
+        # Extract first batch item and slice to valid detections
+        boxes_valid = boxes[0, :n].astype(np.float32, copy=False)
+        scores_valid = scores[0, :n].astype(float, copy=False)
+        classes_valid = classes[0, :n].astype(int, copy=False)
+
+        # Rescale boxes if original shape provided
+        if original_shape is not None:
+            boxes_valid = self._rescale_boxes(boxes_valid, original_shape)
+
+        bboxes = boxes_valid.tolist()
+        confs = [round(float(score), 2) for score in scores_valid]
+        indexes = classes_valid.tolist()
 
         return bboxes, confs, indexes
+
+    def _rescale_boxes(
+        self, boxes: np.ndarray, original_shape: Tuple[int, int]
+    ) -> np.ndarray:
+        """
+        Rescale bounding boxes from model coordinates (640x640) to original image size.
+        
+        Accounts for letterbox/padding that maintains aspect ratio during preprocessing.
+
+        Args:
+            boxes: Array of shape [N, 4] with boxes as [x1, y1, x2, y2] in 640x640 space.
+            original_shape: Tuple of (height, width) of the original image.
+
+        Returns:
+            Rescaled boxes array of shape [N, 4].
+        """
+        orig_h, orig_w = original_shape
+        model_size = 640
+
+        # Calculate the scale factor used during preprocessing (letterbox with aspect ratio)
+        scale = min(model_size / orig_w, model_size / orig_h)
+        
+        # Calculate padding that was added
+        pad_w = (model_size - orig_w * scale) / 2
+        pad_h = (model_size - orig_h * scale) / 2
+
+        # Rescale boxes: remove padding first, then scale back to original size
+        rescaled = boxes.copy()
+        rescaled[:, [0, 2]] = (rescaled[:, [0, 2]] - pad_w) / scale  # x1, x2
+        rescaled[:, [1, 3]] = (rescaled[:, [1, 3]] - pad_h) / scale  # y1, y2
+
+        return rescaled
 
     def _create_inputs(self, *args):
         """
