@@ -114,17 +114,20 @@ class TritonClient:
         self.classes: Optional[List[str]] = self._get_classes()
 
     def __call__(
-        self, *args: Any
+        self, *args: Any, original_shape: Optional[Tuple[int, int]] = None
     ) -> Tuple[List[List[float]], List[float], List[int]]:
         """
-        Run inference and parse first-item detection outputs.
+        Run inference and parse NMS detection outputs.
 
-        Expects the model to produce an output named "boxes" with shape
-        [N, 6] or [B, N, 6] where each row is [x1, y1, x2, y2, conf, cls].
-        Optionally, a "num_dets" output can provide the number of valid rows.
+        Expects the model to produce outputs:
+        - "nms_num_dets": [1, 1] number of valid detections
+        - "nms_boxes": [1, N, 4] bounding boxes as [x1, y1, x2, y2]
+        - "nms_scores": [1, N] confidence scores
+        - "nms_classes": [1, N] class indices
 
         Args:
             *args: Model inputs matching the Triton model's input schema.
+            original_shape: Optional (height, width) of original image for rescaling boxes.
 
         Returns:
             A tuple of (bboxes, confs, indexes) for the first batch item:
@@ -143,32 +146,63 @@ class TritonClient:
             outputs=self._requested_outputs_objs,
         )
 
-        boxes = response.as_numpy("boxes")
-        num_dets = (
-            response.as_numpy("num_dets")
-            if "num_dets" in self.output_names
-            else None
+        num_dets = response.as_numpy("nms_num_dets")
+        boxes = response.as_numpy("nms_boxes")
+        scores = response.as_numpy("nms_scores")
+        classes = response.as_numpy("nms_classes")
+
+        if boxes is None or scores is None or classes is None:
+            raise RuntimeError("Triton response missing required NMS outputs.")
+
+        n = (
+            int(num_dets.reshape(-1)[0])
+            if num_dets is not None
+            else boxes.shape[1]
         )
+        n = max(0, min(n, boxes.shape[1]))
 
-        if boxes is None:
-            raise RuntimeError("Triton response missing 'boxes' output.")
+        boxes_valid = boxes[0, :n].astype(np.float32, copy=False)
+        scores_valid = scores[0, :n].astype(float, copy=False)
+        print(scores_valid)
+        classes_valid = classes[0, :n].astype(int, copy=False)
 
-        if boxes.ndim == 3:
-            boxes2d = boxes[0]
-        else:
-            boxes2d = boxes
+        if original_shape is not None:
+            boxes_valid = self._rescale_boxes(boxes_valid, original_shape)
 
-        if num_dets is None:
-            n = int(np.count_nonzero(boxes2d[:, 4] > 0))
-        else:
-            n = int(np.asarray(num_dets).reshape(-1)[0])
+        bboxes = boxes_valid.tolist()
+        confs = scores_valid.tolist()
+        indexes = classes_valid.tolist()
 
-        n = max(0, min(n, boxes2d.shape[0]))
-        valid = boxes2d[:n].astype(np.float32, copy=False)
-        bboxes = valid[:, :4].tolist()
-        confs = valid[:, 4].astype(float, copy=False).tolist()
-        indexes = valid[:, 5].astype(int, copy=False).tolist()
         return bboxes, confs, indexes
+
+    def _rescale_boxes(
+        self, boxes: np.ndarray, original_shape: Tuple[int, int]
+    ) -> np.ndarray:
+        """
+        Rescale bounding boxes from model coordinates (640x640) to original image size.
+
+        Accounts for letterbox/padding that maintains aspect ratio during preprocessing.
+
+        Args:
+            boxes: Array of shape [N, 4] with boxes as [x1, y1, x2, y2] in 640x640 space.
+            original_shape: Tuple of (height, width) of the original image.
+
+        Returns:
+            Rescaled boxes array of shape [N, 4].
+        """
+        orig_h, orig_w = original_shape
+        model_size = 640
+
+        scale = min(model_size / orig_w, model_size / orig_h)
+
+        pad_w = (model_size - orig_w * scale) / 2
+        pad_h = (model_size - orig_h * scale) / 2
+
+        rescaled = boxes.copy()
+        rescaled[:, [0, 2]] = (rescaled[:, [0, 2]] - pad_w) / scale
+        rescaled[:, [1, 3]] = (rescaled[:, [1, 3]] - pad_h) / scale
+
+        return rescaled
 
     def infer_batch(self, *args: Any) -> Any:
         """
@@ -301,20 +335,6 @@ def draw_bounding_boxes(
     classes: Optional[List[str]] = None,
     output_path: str = "results.png",
 ) -> None:
-    """
-    Draw bounding boxes on an RGB image and write it to disk.
-
-    Args:
-        image: Input RGB image with shape [H, W, 3] and dtype uint8.
-        bboxes: List of bounding boxes as [x1, y1, x2, y2].
-        confs: Confidence scores corresponding to each bounding box.
-        indexes: Class indices corresponding to each bounding box.
-        classes: Optional list of class names indexed by class id.
-        output_path: Output file path for the saved image.
-
-    Returns:
-        None
-    """
     img_with_boxes = cv2.cvtColor(image.copy(), cv2.COLOR_RGB2BGR)
 
     colors: List[Tuple[int, int, int]] = [
@@ -335,11 +355,11 @@ def draw_bounding_boxes(
         color = colors[class_idx % len(colors)]
         cv2.rectangle(img_with_boxes, (x1, y1), (x2, y2), color, 2)
 
-        if classes and class_idx < len(classes):
+        if classes and 0 <= class_idx < len(classes):
             class_name = classes[class_idx]
-            label = f"{class_name}: {conf}"
+            label = f"{class_name}: {conf:.2f}"
         else:
-            label = f"Class {class_idx}: {conf}"
+            label = f"Class {class_idx}: {conf:.2f}"
 
         (text_width, text_height), baseline = cv2.getTextSize(
             label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
@@ -347,16 +367,20 @@ def draw_bounding_boxes(
 
         cv2.rectangle(
             img_with_boxes,
-            (x1, y1 - text_height - baseline - 5),
+            (x1, max(0, y1 - text_height - baseline - 5)),
             (x1 + text_width, y1),
             color,
             -1,
         )
-
         cv2.putText(
             img_with_boxes,
             label,
-            (x1, y1 - baseline - 2),
+            (
+                x1,
+                y1 - baseline - 2
+                if y1 - baseline - 2 > 0
+                else y1 + text_height + 2,
+            ),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (255, 255, 255),
@@ -367,17 +391,15 @@ def draw_bounding_boxes(
 
 
 if __name__ == "__main__":
-    """Example usage for local testing."""
     image_path = "../app/images/image_1280_720.png"
     image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
 
     client = TritonClient(
-        url="grpc://localhost:8001",
+        url="http://localhost:8000",
         model="yolo11",
-        requested_outputs=["boxes", "num_dets"],
     )
 
-    bboxes, confs, indexes = client(image[None, :, :, :])
+    bboxes, confs, indexes = client(image, original_shape=image.shape[:2])
 
     draw_bounding_boxes(
         image,

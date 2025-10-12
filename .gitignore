@@ -8,7 +8,7 @@ stream-*.ts
 *.onnx
 *.pt
 data/
-holly/
+old_triton/
 
 ### Linux ###
 *~

@@ -1,6 +1,6 @@
 name: "preprocess"
 backend: "pytorch"
-max_batch_size: 8
+max_batch_size: 0
 
 input [
   {
@@ -13,8 +13,8 @@ input [
 output [
   {
     name: "resized_image"
-    data_type: TYPE_FP32
-    dims: [ 3, 640, 640 ]
+    data_type: TYPE_FP16
+    dims: [ 1, 3, 640, 640 ]
   }
 ]
 
@@ -25,11 +25,6 @@ instance_group [
     count: 1
   }
 ]
-
-dynamic_batching {
-  preferred_batch_size: [ 1, 2, 4 ]
-  max_queue_delay_microseconds: 800
-}
 
 optimization {
   execution_accelerators {

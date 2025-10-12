@@ -34,10 +34,10 @@ class Letterbox640(nn.Module):
         self.tw = int(target_hw[1])
 
         self.register_buffer(
-            "scale_factor", torch.tensor(1.0 / 255.0, dtype=torch.float32)
+            "scale_factor", torch.tensor(1.0 / 255.0, dtype=torch.float16)
         )
         self.register_buffer(
-            "pad_value", torch.tensor(114.0 / 255.0, dtype=torch.float32)
+            "pad_value", torch.tensor(114.0 / 255.0, dtype=torch.float16)
         )
 
     @torch.jit.export
@@ -52,7 +52,7 @@ class Letterbox640(nn.Module):
             Tensor with shape ``[3, 640, 640]`` and dtype ``float32`` on CUDA.
         """
         x = (
-            img_nhwc_u8.to(device="cuda", dtype=torch.float32)
+            img_nhwc_u8.to(device="cuda", dtype=torch.float16)
             * self.scale_factor
         )
 
@@ -89,7 +89,7 @@ class Letterbox640(nn.Module):
             value=float(self.pad_value),
         )
 
-        return x.to(dtype=torch.float32, device="cuda")
+        return x.to(dtype=torch.float16, device="cuda")
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """

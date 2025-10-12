@@ -261,6 +261,7 @@ class TritonClient:
             (i["name"], [int(s) for s in i["shape"]], i["datatype"])
             for i in self.metadata["inputs"]
         ]
+        # Update output names for new NMS format
         self.output_names: List[str] = (
             [o["name"] for o in self.metadata["outputs"]]
             if requested_outputs is None
@@ -352,27 +353,30 @@ class TritonClient:
             inputs=inputs,
             outputs=self._requested_outputs_objs,
         )
-        boxes = rsp.as_numpy("boxes")
-        num_dets = (
-            rsp.as_numpy("num_dets")
-            if "num_dets" in self.output_names
-            else None
-        )
-        if boxes is None:
-            raise RuntimeError("Missing 'boxes'")
 
-        boxes2d = boxes[0] if boxes.ndim == 3 else boxes
+        num_dets = rsp.as_numpy("nms_num_dets")
+        boxes = rsp.as_numpy("nms_boxes")
+        scores = rsp.as_numpy("nms_scores")
+        classes = rsp.as_numpy("nms_classes")
+
+        if boxes is None or scores is None or classes is None:
+            raise RuntimeError("Missing required outputs")
+
         n = (
-            int(np.count_nonzero(boxes2d[:, 4] > 0))
-            if num_dets is None
-            else int(np.asarray(num_dets).reshape(-1)[0])
+            int(np.asarray(num_dets).reshape(-1)[0])
+            if num_dets is not None
+            else 0
         )
-        n = max(0, min(n, boxes2d.shape[0]))
-        valid = boxes2d[:n].astype(np.float32, copy=False)
+        n = max(0, min(n, boxes.shape[1]))
+
+        valid_boxes = boxes[0, :n, :].astype(np.float32, copy=False)
+        valid_scores = scores[0, :n].astype(float, copy=False)
+        valid_classes = classes[0, :n].astype(int, copy=False)
+
         return (
-            valid[:, :4].tolist(),
-            valid[:, 4].astype(float).tolist(),
-            valid[:, 5].astype(int).tolist(),
+            valid_boxes.tolist(),
+            valid_scores.tolist(),
+            valid_classes.tolist(),
         )
 
     def infer_async(
@@ -423,27 +427,32 @@ class TritonClient:
             done.wait()
         if not result["ok"]:
             raise RuntimeError(result["err"])
+
         rsp = result["rsp"]
-        boxes = rsp.as_numpy("boxes")
-        num_dets = (
-            rsp.as_numpy("num_dets")
-            if "num_dets" in self.output_names
-            else None
-        )
-        if boxes is None:
+
+        num_dets = rsp.as_numpy("nms_num_dets")
+        boxes = rsp.as_numpy("nms_boxes")
+        scores = rsp.as_numpy("nms_scores")
+        classes = rsp.as_numpy("nms_classes")
+
+        if boxes is None or scores is None or classes is None:
             return ([], [], [])
-        boxes2d = boxes[0] if boxes.ndim == 3 else boxes
+
         n = (
-            int(np.count_nonzero(boxes2d[:, 4] > 0))
-            if num_dets is None
-            else int(np.asarray(num_dets).reshape(-1)[0])
+            int(np.asarray(num_dets).reshape(-1)[0])
+            if num_dets is not None
+            else 0
         )
-        n = max(0, min(n, boxes2d.shape[0]))
-        valid = boxes2d[:n].astype(np.float32, copy=False)
+        n = max(0, min(n, boxes.shape[1]))
+
+        valid_boxes = boxes[0, :n, :].astype(np.float32, copy=False)
+        valid_scores = scores[0, :n].astype(float, copy=False)
+        valid_classes = classes[0, :n].astype(int, copy=False)
+
         return (
-            valid[:, :4].tolist(),
-            valid[:, 4].astype(float).tolist(),
-            valid[:, 5].astype(int).tolist(),
+            valid_boxes.tolist(),
+            valid_scores.tolist(),
+            valid_classes.tolist(),
         )
 
     def _get_labels(self) -> Optional[List[str]]:
@@ -851,15 +860,13 @@ def inference_thread(
         t0 = time.time()
         try:
             if use_async:
-                out = model.infer_async(
-                    frame[None, :, :, :], timeout_ms=adaptive_latency_ms
-                )
+                out = model.infer_async(frame, timeout_ms=adaptive_latency_ms)
                 if out is None:
                     stride = min(6, stride + 1)
                     continue
                 bboxes, confs, indexes = out
             else:
-                bboxes, confs, indexes = model(frame[None, :, :, :])
+                bboxes, confs, indexes = model(frame)
             dets.set(bboxes, confs, indexes)
         except Exception:
             pass
@@ -954,8 +961,8 @@ def main():
     parser.add_arg("STREAM_APPLICATION", default="live", d_type=str)
     parser.add_arg("STREAM_KEY", default="stream", d_type=str)
     parser.add_arg("CAMERA_INDEX", default=0, d_type=int)
-    parser.add_arg("CAMERA_WIDTH", default=640, d_type=int)
-    parser.add_arg("CAMERA_HEIGHT", default=480, d_type=int)
+    parser.add_arg("CAMERA_WIDTH", default=1280, d_type=int)
+    parser.add_arg("CAMERA_HEIGHT", default=720, d_type=int)
     parser.add_arg("CAMERA_FPS", default=30, d_type=int)
     parser.add_arg("SANTA_HAT_PLUGIN", default=False, d_type=bool)
     parser.add_arg("AUDIO_ENABLED", default=False, d_type=bool)
@@ -988,8 +995,14 @@ def main():
     model = TritonClient(
         url=args.TRITON_URL,
         model=args.MODEL_NAME,
-        requested_outputs=["boxes", "num_dets"],
+        requested_outputs=[
+            "nms_num_dets",
+            "nms_boxes",
+            "nms_scores",
+            "nms_classes",
+        ],
     )
+
     annotator = Annotator(
         labels=model.labels,
         width=args.CAMERA_WIDTH,

@@ -1,5 +1,6 @@
 collect_data.py
 images/logo.png
+images/image_1280_720.png
 
 # Docker files
 Dockerfile
