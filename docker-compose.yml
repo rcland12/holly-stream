@@ -3,10 +3,10 @@ name: holly-stream
 networks:
   backend:
     driver: bridge
+  global-nginx:
+    external: true
   triton:
     driver: bridge
-  rtmp-localhost:
-    external: true
 
 services:
   app:
@@ -18,7 +18,7 @@ services:
       - audio
     networks:
       - backend
-      - rtmp-localhost
+      - global-nginx
       - triton
     devices:
       - /dev/video0:/dev/video0
@@ -51,7 +51,15 @@ services:
               count: 1
               capabilities: [gpu]
     healthcheck:
-      test: [ "CMD", "curl", "-i", "-X", "GET", "http://localhost:8000/v2/health/ready" ]
+      test:
+        [
+          "CMD",
+          "curl",
+          "-i",
+          "-X",
+          "GET",
+          "http://localhost:8000/v2/health/ready",
+        ]
       interval: 5s
       timeout: 10s
       retries: 6
@@ -80,7 +88,7 @@ services:
     networks:
       - backend
     ports:
-      - 8080:8080
+      - 8088:8080
     healthcheck:
       test: ["CMD-SHELL", "nginx -t && kill -0 $(cat /tmp/nginx.pid)"]
       interval: 10s
