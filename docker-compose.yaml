@@ -1,8 +1,86 @@
-services:
+name: holly-stream
+
+networks:
+  backend:
+    driver: bridge
   triton:
+    driver: bridge
+
+services:
+  app:
+    container_name: holly-stream-app
+    image: rcland12/detection-stream:raspbian-latest
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    networks:
+      - backend
+      - triton
+    ports:
+      - "${STREAM_PORT:-1935}:${STREAM_PORT:-1935}"
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - LIBCAMERA_LOG_LEVELS=*:WARNING
+      - UDEV=1
+      - PYTHONUNBUFFERED=1
+      - CAMERA_BACKEND=${CAMERA_BACKEND:-libcamera}
+    env_file: .env
+    privileged: true
+    group_add:
+      - audio
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video10:/dev/video10
+      - /dev/video11:/dev/video11
+      - /dev/video12:/dev/video12
+      - /dev/video13:/dev/video13
+      - /dev/video14:/dev/video14
+      - /dev/video15:/dev/video15
+      - /dev/video16:/dev/video16
+      - /dev/media0:/dev/media0
+      - /dev/media1:/dev/media1
+      - /dev/media2:/dev/media2
+      - /dev/media3:/dev/media3
+      - /dev/dma_heap:/dev/dma_heap
+      - /dev/snd:/dev/snd
+      - /dev/vchiq:/dev/vchiq
+      - /dev/vcsm-cma:/dev/vcsm-cma
+      - /dev/dri:/dev/dri
+    volumes:
+      - /dev:/dev
+      - /run/udev:/run/udev:ro
+      - /sys:/sys:ro
+      - /dev/shm:/dev/shm
+      - /usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu:ro
+      - /opt/vc:/opt/vc:ro
+    security_opt:
+      - apparmor:unconfined
+      - seccomp:unconfined
+    cap_add:
+      - SYS_ADMIN
+      - SYS_RAWIO
+      - SYS_NICE
+      - NET_ADMIN
+      - SYS_PTRACE
+    shm_size: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'python3|ffmpeg|rpicam|libcamera' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    # restart: unless-stopped
+
+  triton:
+    container_name: holly-stream-triton
     image: rcland12/detection-stream:raspbian-triton-latest
-    build: ./triton
-    network_mode: host
+    build:
+      context: ./triton
+    networks:
+      - triton
+    ports:
+      - 8000:8000
     shm_size: 128mb
     volumes:
       - ./triton:/root/app/triton
@@ -14,15 +92,34 @@ services:
       retries: 6
   
   nginx-stream:
+    container_name: holly-stream-nginx-stream
     image: rcland12/detection-stream:nginx-latest
-    build: ./nginx
-    network_mode: host
-    volumes:
-      - ./nginx/nginx-stream/nginx.conf:/etc/nginx/nginx.conf
+    build:
+      context: ./nginx
+    networks:
+      - backend
+    ports:
+      - ${STREAM_PORT}:${STREAM_PORT}
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t && kill -0 $(cat /tmp/nginx.pid)"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 10s
   
   nginx-web:
+    container_name: holly-stream-nginx-web
     image: rcland12/detection-stream:nginx-latest
-    build: ./nginx
-    network_mode: host
-    volumes:
-      - ./nginx/nginx-web/nginx.conf:/etc/nginx/nginx.conf
+    build:
+      context: ./nginx
+    networks:
+      - backend
+    ports:
+      - ${STREAM_PORT}:${STREAM_PORT}
+      - 8080:8080
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t && kill -0 $(cat /tmp/nginx.pid)"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 10s

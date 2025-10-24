@@ -1,6 +1,3 @@
-nginx-stream/
-nginx-web/
-
 # Docker files
 Dockerfile
 .dockerignore

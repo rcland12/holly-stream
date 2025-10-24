@@ -1,0 +1,10 @@
+opencv-python==4.8.1.78
+numpy==1.24.3
+torch==2.0.1
+torchvision==0.15.2
+picamera2==0.3.12
+imutils==0.5.4
+python-dotenv==1.0.0
+tritonclient[all]==2.34.0
+libcamera==0.0.5
+psutil==5.9.5
