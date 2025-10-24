@@ -4,9 +4,8 @@
 # custom files
 *.m3u8
 stream-*.ts
-tritonserver/
 data/
-holly/
+old_models/
 
 ### Linux ###
 *~

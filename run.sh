@@ -2,60 +2,42 @@
 
 source .env
 
+export PATH="${DOCKER_COMPOSE_PATH}:${PATH}"
+
 if [ -z $OBJECT_DETECTION ]; then echo "The environment variable OBJECT_DETECTION is required. This is a boolean value True/False."; fi
 
-if [ "${OBJECT_DETECTION}" == "True" ]; then
+if [[ "${OBJECT_DETECTION}" == "True" ]]; then
     docker-compose up -d triton
 
-    ATTEMPT=1
-    RETRIES=60
-    INTERVAL=1
-    TOTAL_TIME=$((RETRIES * INTERVAL))
-
     echo "Waiting to start Holly Stream until Triton is healthy."
-    while [ $ATTEMPT -le $RETRIES ]; do
-        url="http://localhost:8000/v2/health/ready"
-        response=$(curl --write-out "%{http_code}" --silent --output /dev/null "$url")
-
-        if [ $response -eq 200 ]; then
+    for ((attempt=1; attempt<=60; attempt++)); do
+        if docker-compose exec triton curl -s -f "http://localhost:8000/v2/health/ready" > /dev/null; then
             break
-        else
-            ATTEMPT=$((ATTEMPT + 1))
-            sleep $INTERVAL
         fi
+        sleep 1
+        [[ $attempt -eq 60 ]] && echo "Triton failed all health checks after 60 seconds. Stopping all services." && exit 120
     done
+fi
 
-    if [ $ATTEMPT -gt $RETRIES ]; then
-        echo "Triton failed all health checks after $TOTAL_TIME. Stopping all services."
-        exit 120
-    fi
+docker-compose up -d app
+echo "Holly Stream has started. Performing health check..."
 
-    docker-compose up -d app
-
-    echo "Holly Stream has started. Performing health check..."
-    sleep 10
-
-    if [ "$( docker container inspect -f '{{.State.Running}}' holly-stream_app_1 )" = "true" ]; then
+for i in {1..12}; do
+    if [ "$( docker container inspect -f '{{.State.Running}}' holly-stream-app )" = "true" ]; then
         echo "Holly Stream STATUS: HEALTHY"
-    else
+        break
+    elif [ $i -eq 12 ]; then
         echo "Holly STREAM STATUS: UNHEALTHY"
         echo "Shutting down."
         docker-compose down
-    fi
-
-elif [ "${OBJECT_DETECTION}" == "False" ]; then
-    docker-compose up -d app
-    echo "Holly Stream has started. Performing health check..."
-    sleep 10
-
-    if [ "$( docker container inspect -f '{{.State.Running}}' holly-stream_app_1 )" = "true" ]; then
-        echo "Holly Stream STATUS: HEALTHY"
+        exit 1
     else
-        echo "Holly STREAM STATUS: UNHEALTHY"
-        echo "Shutting down."
+        echo "Health check attempt: $i/12"
+        sleep 5
     fi
+done
 
-else
-    echo "Invalid input for OBJECT_DETECTION. Expecting True or False; received ${OBJECT_DETECTION}."
-    exit 120
-fi
+echo "Starting fan..."
+echo 255 > /sys/devices/pwm-fan/target_pwm
+
+echo "System running."

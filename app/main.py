@@ -113,6 +113,7 @@ class TritonClient:
     Raises:
         RuntimeError: If an unsupported protocol is used (other than HTTP or GRPC).
     """
+
     def __init__(self, url: str, model: str):
         """
         Initialize the TritonClient instance.
@@ -121,41 +122,42 @@ class TritonClient:
             url (str): The URL of the Triton Inference Server.
             model (str): The name of the model to be used for inference.
         """
+
+        self.model_name: str = model
+
         parsed_url = urlparse(url)
         if parsed_url.scheme == "grpc":
             from tritonclient.grpc import InferenceServerClient, InferInput
 
-            self.client: InferenceServerClient = InferenceServerClient(parsed_url.netloc)
-            self.model_name: str = model
-            self.metadata: dict = self.client.get_model_metadata(self.model_name, as_json=True)
-            self.config: dict = self.client.get_model_config(self.model_name, as_json=True)["config"]
+            self.client: InferenceServerClient = InferenceServerClient(
+                parsed_url.netloc
+            )
+            self.metadata: dict = self.client.get_model_metadata(
+                self.model_name, as_json=True
+            )
+            self.config: dict = self.client.get_model_config(
+                self.model_name, as_json=True
+            )["config"]
 
             def create_input_placeholders() -> List[InferInput]:
                 return [
-                    InferInput(
-                        i['name'],
-                        [int(s) for s in i['shape']],
-                        i['datatype']
-                    )
-                    for i in self.metadata['inputs']
+                    InferInput(i["name"], [int(s) for s in i["shape"]], i["datatype"])
+                    for i in self.metadata["inputs"]
                 ]
 
         elif parsed_url.scheme == "http":
             from tritonclient.http import InferenceServerClient, InferInput
 
-            self.client: InferenceServerClient = InferenceServerClient(parsed_url.netloc)
-            self.model_name: str = model
+            self.client: InferenceServerClient = InferenceServerClient(
+                parsed_url.netloc
+            )
             self.metadata: dict = self.client.get_model_metadata(self.model_name)
             self.config: dict = self.client.get_model_config(self.model_name)
 
             def create_input_placeholders() -> List[InferInput]:
                 return [
-                    InferInput(
-                        i['name'],
-                        [int(s) for s in i['shape']],
-                        i['datatype']
-                    )
-                    for i in self.metadata['inputs']
+                    InferInput(i["name"], [int(s) for s in i["shape"]], i["datatype"])
+                    for i in self.metadata["inputs"]
                 ]
 
         else:
@@ -165,32 +167,93 @@ class TritonClient:
         self.model_dims: Tuple[int, int] = self._get_dims()
         self.classes: Optional[List[str]] = self._get_classes()
 
-    def __call__(self, *args) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
+    def __call__(
+        self, frame: np.ndarray, original_shape: Optional[Tuple[int, int]] = None
+    ) -> Tuple[List[List[float]], List[float], List[int]]:
         """
-        Perform inference on the provided inputs.
+        Run inference and parse NMS detection outputs.
+
+        Expects the model to produce outputs:
+        - "nms_num_dets": [1, 1] number of valid detections
+        - "nms_boxes": [1, N, 4] bounding boxes as [x1, y1, x2, y2]
+        - "nms_scores": [1, N] confidence scores
+        - "nms_classes": [1, N] class indices
 
         Args:
-            *args: The input arguments for the model.
+            frame (np.ndarray): Input frame for inference.
+            original_shape: Optional (height, width) of original image for rescaling boxes.
 
         Returns:
-            Union[torch.Tensor, Tuple[torch.Tensor, ...]]: The inference results.
+            Tuple containing:
+                - List[List[float]]: Bounding boxes, where each box is [x1, y1, x2, y2]
+                - List[float]: Confidence scores rounded to 2 decimal places
+                - List[int]: Class indexes
 
         Raises:
-            RuntimeError: If no inputs are provided or if the number of inputs does not match the expected number.
+            RuntimeError: If expected outputs are missing.
         """
-        inputs = self._create_inputs(*args)
-        response = self.client.infer(model_name=self.model_name, inputs=inputs)
-        result: List[torch.Tensor] = []
-        for output in self.metadata['outputs']:
-            tensor = torch.tensor(response.as_numpy(output['name']))
-            result.append(tensor)
+        inputs = self._create_inputs(frame)
         
-        predictions = result[0].tolist()
-        bboxes = [item[:4] for item in predictions]
-        confs = [round(float(item[4]), 2) for item in predictions]
-        indexes = [int(item[5]) for item in predictions]
+        response = self.client.infer(model_name=self.model_name, inputs=inputs)
+
+        num_dets = response.as_numpy("nms_num_dets")
+        boxes = response.as_numpy("nms_boxes")
+        scores = response.as_numpy("nms_scores")
+        classes = response.as_numpy("nms_classes")
+
+        if boxes is None or scores is None or classes is None:
+            raise RuntimeError("Triton response missing required NMS outputs.")
+
+        # Extract number of valid detections
+        n = int(num_dets.reshape(-1)[0]) if num_dets is not None else boxes.shape[1]
+        n = max(0, min(n, boxes.shape[1]))
+
+        # Extract first batch item and slice to valid detections
+        boxes_valid = boxes[0, :n].astype(np.float32, copy=False)
+        scores_valid = scores[0, :n].astype(float, copy=False)
+        classes_valid = classes[0, :n].astype(int, copy=False)
+
+        # Rescale boxes if original shape provided
+        if original_shape is not None:
+            boxes_valid = self._rescale_boxes(boxes_valid, original_shape)
+
+        bboxes = boxes_valid.tolist()
+        confs = [round(float(score), 2) for score in scores_valid]
+        indexes = classes_valid.tolist()
 
         return bboxes, confs, indexes
+
+    def _rescale_boxes(
+        self, boxes: np.ndarray, original_shape: Tuple[int, int]
+    ) -> np.ndarray:
+        """
+        Rescale bounding boxes from model coordinates (640x640) to original image size.
+        
+        Accounts for letterbox/padding that maintains aspect ratio during preprocessing.
+
+        Args:
+            boxes: Array of shape [N, 4] with boxes as [x1, y1, x2, y2] in 640x640 space.
+            original_shape: Tuple of (height, width) of the original image.
+
+        Returns:
+            Rescaled boxes array of shape [N, 4].
+        """
+        orig_h, orig_w = original_shape
+        model_size = 640
+
+        # Calculate the scale factor used during preprocessing (letterbox with aspect ratio)
+        scale = min(model_size / orig_w, model_size / orig_h)
+        
+        # Calculate padding that was added
+        pad_w = (model_size - orig_w * scale) / 2
+        pad_h = (model_size - orig_h * scale) / 2
+
+        # Rescale boxes: remove padding first, then scale back to original size
+        rescaled = boxes.copy()
+        rescaled[:, [0, 2]] = (rescaled[:, [0, 2]] - pad_w) / scale  # x1, x2
+        rescaled[:, [1, 3]] = (rescaled[:, [1, 3]] - pad_h) / scale  # y1, y2
+
+        return rescaled
 
     def _create_inputs(self, *args):
         """
@@ -205,6 +268,7 @@ class TritonClient:
         Raises:
             RuntimeError: If no inputs are provided or if the number of inputs does not match the expected number.
         """
+
         args_len = len(args)
         if not args_len:
             raise RuntimeError("No inputs provided.")
@@ -213,7 +277,9 @@ class TritonClient:
 
         if args_len:
             if args_len != len(placeholders):
-                raise RuntimeError(f"Expected {len(placeholders)} inputs, got {args_len}.")
+                raise RuntimeError(
+                    f"Expected {len(placeholders)} inputs, got {args_len}."
+                )
             for input, value in zip(placeholders, args):
                 input.set_data_from_numpy(value)
 
@@ -226,9 +292,13 @@ class TritonClient:
         Returns:
             Optional[List[str]]: The list of class labels, or None if not available.
         """
+
         label_filename = self.config["output"][0]["label_filename"]
         docker_file_path = f"/root/app/triton/{self.model_name}/{label_filename}"
-        local_file_path = os.path.join(os.path.abspath(os.getcwd()), f"triton/{self.model_name}/{label_filename}")
+        local_file_path = os.path.join(
+            os.path.abspath(os.getcwd()),
+            f"triton/{self.model_name}/{label_filename}",
+        )
 
         if os.path.isfile(docker_file_path):
             with open(docker_file_path, "r") as file:
@@ -248,10 +318,11 @@ class TritonClient:
         Returns:
             Tuple[int, int]: The dimensions of the model input.
         """
+
         try:
             model_dims = tuple(self.config["input"][0]["dims"][2:4])
             return tuple(map(int, model_dims))
-        except:
+        except Exception:
             return (640, 640)
 
 
@@ -478,11 +549,10 @@ def main(
     return
 
 
-
 if __name__ == "__main__":
     load_dotenv()
     parser = EnvArgumentParser()
-    parser.add_arg("TRITON_URL", default="grpc://localhost:8001", d_type=str)
+    parser.add_arg("TRITON_URL", default="http://localhost:8000", d_type=str)
     parser.add_arg("MODEL_NAME", default="yolov5s", d_type=str)
     parser.add_arg("STREAM_IP", default="127.0.0.1", d_type=str)
     parser.add_arg("STREAM_PORT", default=1935, d_type=int)

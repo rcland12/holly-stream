@@ -27,7 +27,7 @@ def check_save_path(save_path: str, start_index: int) -> int:
                 int(file.split("_")[1].split(".")[0]) if "png" in file else None
                 for file in files
             ]
-            max_number = max(list(filter(None, numbers)))
+            max_number = max([n for n in numbers if n is not None])
 
             if max_number >= start_index:
                 user_input = input(
@@ -36,14 +36,13 @@ def check_save_path(save_path: str, start_index: int) -> int:
                     \n  Do you want to start the indexing at {max_number + 1}? (y/n)\
                     \n"""
                 )
-                match user_input:
-                    case "y":
-                        start_index = max_number + 1
-                    case "n":
-                        pass
-                    case _ :
-                        print("Invalid user input. Enter 'y' or 'n'.")
-                        exit(1)
+                if user_input == "y":
+                    start_index = max_number + 1
+                elif user_input == "n":
+                    pass
+                else:
+                    print("Invalid user input. Enter 'y' or 'n'.")
+                    exit(1)
 
     return start_index
 
@@ -108,14 +107,12 @@ def main(
         camera.release()
         return
 
-
-
 if __name__ == "__main__":
     main(
         save_path="../data/",
         number_to_save=100,
         start_index=0,
-        period=5,
+        period=2,
         camera_index=0,
         camera_width=1280,
         camera_height=720,
