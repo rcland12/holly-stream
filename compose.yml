@@ -1,11 +1,5 @@
 name: holly-stream
 
-networks:
-  backend:
-    driver: bridge
-  triton:
-    driver: bridge
-
 services:
   app:
     container_name: holly-stream-app
@@ -13,11 +7,8 @@ services:
     build:
       context: ./app
       dockerfile: Dockerfile
-    networks:
-      - backend
-      - triton
-    ports:
-      - "${STREAM_PORT:-1935}:${STREAM_PORT:-1935}"
+    restart: unless-stopped
+    network_mode: host
     environment:
       - DISPLAY=${DISPLAY:-:0}
       - LIBCAMERA_LOG_LEVELS=*:WARNING
@@ -70,17 +61,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    # restart: unless-stopped
 
   triton:
     container_name: holly-stream-triton
     image: rcland12/detection-stream:raspbian-triton-latest
     build:
       context: ./triton
-    networks:
-      - triton
-    ports:
-      - 8000:8000
+    network_mode: host
     shm_size: 128mb
     volumes:
       - ./triton:/root/app/triton
@@ -96,10 +83,7 @@ services:
     image: rcland12/detection-stream:nginx-latest
     build:
       context: ./nginx
-    networks:
-      - backend
-    ports:
-      - ${STREAM_PORT}:${STREAM_PORT}
+    network_mode: host
     healthcheck:
       test: ["CMD-SHELL", "nginx -t && kill -0 $(cat /tmp/nginx.pid)"]
       interval: 10s
@@ -112,11 +96,7 @@ services:
     image: rcland12/detection-stream:nginx-latest
     build:
       context: ./nginx
-    networks:
-      - backend
-    ports:
-      - ${STREAM_PORT}:${STREAM_PORT}
-      - 8080:8080
+    network_mode: host
     healthcheck:
       test: ["CMD-SHELL", "nginx -t && kill -0 $(cat /tmp/nginx.pid)"]
       interval: 10s
