@@ -1,11 +1,5 @@
 version: "3.8"
 
-networks:
-  backend:
-    driver: bridge
-  triton:
-    driver: bridge
-
 services:
   app:
     container_name: holly-stream-app
@@ -15,11 +9,7 @@ services:
     privileged: true
     group_add:
       - audio
-    networks:
-      - backend
-      - triton
-    ports:
-      - "${STREAM_PORT:-1935}:${STREAM_PORT:-1935}"
+    network_mode: "host"
     devices:
       - /dev/video0:/dev/video0
       - /dev/snd:/dev/snd
@@ -35,8 +25,7 @@ services:
     image: rcland12/detection-stream:jetson-triton-latest
     build:
       context: ./triton
-    networks:
-      - triton
+    network_mode: "host"
     ports:
       - 8000:8000
       - 8001:8001
@@ -56,10 +45,7 @@ services:
     image: rcland12/detection-stream:nginx-latest
     build:
       context: ./nginx
-    networks:
-      - backend
-    ports:
-      - ${STREAM_PORT}:${STREAM_PORT}
+    network_mode: "host"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080", "||", "exit", "1"]
       interval: 30s
@@ -72,10 +58,7 @@ services:
     image: rcland12/detection-stream:nginx-latest
     build:
       context: ./nginx
-    networks:
-      - backend
-    ports:
-      - 8080:8080
+    network_mode: "host"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080", "||", "exit", "1"]
       interval: 30s
