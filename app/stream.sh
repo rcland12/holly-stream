@@ -65,15 +65,12 @@
 
 set -o pipefail
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+set -e
 
-log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+STREAM_IP="${STREAM_IP:-192.168.1.120}"
+STREAM_PORT="${STREAM_PORT:-1935}"
+STREAM_APPLICATION="${STREAM_APPLICATION:-hollystream1}"
+STREAM_KEY="${STREAM_KEY:-hollyvideostream1}"
 
 # ---------------------------------------------------------------------------
 # Connection / device defaults
