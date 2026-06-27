@@ -186,35 +186,36 @@ fi
 # resolution preset instead of being a fixed number. Set VIDEO_BITRATE (bps) to
 # override the computed value entirely.
 #
-# control-rate on nvv4l2h264enc:  1 = variable (VBR), 2 = constant (CBR).
-# CBR is preferred for streaming: a flat bitrate avoids the spikes that overflow
-# downstream buffers and cause rebuffering.
+# control-rate on nvv4l2h264enc:  0 = variable_bitrate (VBR), 1 = constant_bitrate
+# (CBR). NOTE: this enum differs from omxh264enc (where 2 = CBR) -- nvv4l2h264enc
+# only accepts 0 or 1. CBR is preferred for streaming: a flat bitrate avoids the
+# spikes that overflow downstream buffers and cause rebuffering.
 # ---------------------------------------------------------------------------
 STREAM_QUALITY="${STREAM_QUALITY:-smooth}"
 
 case "$STREAM_QUALITY" in
     ultra)
-        BPP_NUM=15; CONTROL_RATE=1; H264_PRESET=4; TWOPASS=0; PEAK_PCT=140
+        BPP_NUM=15; CONTROL_RATE=0; H264_PRESET=4; PEAK_PCT=140
         log_info "Quality: ULTRA (VBR, highest image quality, may buffer on weak uplinks)"
         ;;
     high)
-        BPP_NUM=12; CONTROL_RATE=2; H264_PRESET=3; TWOPASS=1; PEAK_PCT=130
+        BPP_NUM=12; CONTROL_RATE=1; H264_PRESET=3; PEAK_PCT=130
         log_info "Quality: HIGH (CBR, excellent quality)"
         ;;
     smooth)
-        BPP_NUM=10; CONTROL_RATE=2; H264_PRESET=3; TWOPASS=1; PEAK_PCT=120
+        BPP_NUM=10; CONTROL_RATE=1; H264_PRESET=3; PEAK_PCT=120
         log_info "Quality: SMOOTH (CBR, balanced quality, stable bitrate)"
         ;;
     balanced)
-        BPP_NUM=8;  CONTROL_RATE=2; H264_PRESET=2; TWOPASS=1; PEAK_PCT=115
+        BPP_NUM=8;  CONTROL_RATE=1; H264_PRESET=2; PEAK_PCT=115
         log_info "Quality: BALANCED (CBR, good quality/performance)"
         ;;
     fast)
-        BPP_NUM=6;  CONTROL_RATE=2; H264_PRESET=2; TWOPASS=1; PEAK_PCT=110
+        BPP_NUM=6;  CONTROL_RATE=1; H264_PRESET=2; PEAK_PCT=110
         log_info "Quality: FAST (CBR, lowest bitrate, best for constrained uplinks)"
         ;;
     *)
-        BPP_NUM=10; CONTROL_RATE=2; H264_PRESET=3; TWOPASS=1; PEAK_PCT=120
+        BPP_NUM=10; CONTROL_RATE=1; H264_PRESET=3; PEAK_PCT=120
         log_warn "Unknown STREAM_QUALITY '${STREAM_QUALITY}', defaulting to SMOOTH"
         ;;
 esac
@@ -230,12 +231,7 @@ else
 fi
 PEAK_BITRATE="${PEAK_BITRATE:-$(( VIDEO_BITRATE * PEAK_PCT / 100 ))}"
 
-if [ "$CONTROL_RATE" = "2" ] && [ "$TWOPASS" = "1" ]; then
-    TWOPASS_PROP="EnableTwopassCBR=1"
-else
-    TWOPASS_PROP=""
-fi
-[ "$CONTROL_RATE" = "2" ] && RC_LABEL="CBR" || RC_LABEL="VBR"
+[ "$CONTROL_RATE" = "1" ] && RC_LABEL="CBR" || RC_LABEL="VBR"
 
 # Keyframe interval. Keep it short (default 2s) so the HLS packager can cut
 # clean, evenly sized fragments and new viewers join quickly.
@@ -302,7 +298,6 @@ build_video_encoder() {
         peak-bitrate=${PEAK_BITRATE} \
         control-rate=${CONTROL_RATE} \
         preset-level=${H264_PRESET} \
-        ${TWOPASS_PROP} \
         maxperf-enable=1 \
         insert-sps-pps=1 \
         insert-vui=1 \
