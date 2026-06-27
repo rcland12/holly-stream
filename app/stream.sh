@@ -48,13 +48,15 @@
 #   fast        CBR         lowest         best for constrained/flaky uplinks
 #
 # Other tunables (all optional, with defaults):
-#   VIDEO_BITRATE   force exact target bitrate in bps (skips auto-calc)
-#   GOP_SECONDS     keyframe interval in seconds (default 2)
-#   CAPTURE_WIDTH / CAPTURE_HEIGHT   force the sensor capture mode (e.g. for a
-#                                    native non-16:9 mode to avoid stretching)
-#   CAMERA_FPS      overrides the preset framerate when set
-#   WB_MODE         nvarguscamerasrc white balance (default 1 = auto)
-#   GST_DEBUG       GStreamer debug level (default 2)
+#   VIDEO_BITRATE        force exact target bitrate in bps (skips auto-calc)
+#   GOP_SECONDS          keyframe interval in seconds (default 2; alias KEYINT_SECONDS)
+#   CAPTURE_WIDTH / CAPTURE_HEIGHT   force the sensor capture mode (e.g. a full-
+#                                    sensor mode to keep a wide lens's full FOV)
+#   CAMERA_FPS           overrides the preset framerate when set
+#   CAMERA_WBMODE        white balance: 0 = off, 1 = auto (default 1)
+#   CAMERA_TNR_MODE      temporal noise reduction: 0 = off, 2 = high quality (default 2)
+#   CAMERA_TNR_STRENGTH  TNR strength 0.0 - 1.0 (default 1)
+#   GST_DEBUG            GStreamer debug level (default 2)
 #
 # Examples:
 #   STREAM_RESOLUTION=720p  STREAM_QUALITY=fast    ./stream.sh
@@ -65,24 +67,30 @@
 
 set -o pipefail
 
-set -e
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-STREAM_IP="${STREAM_IP:-192.168.1.120}"
-STREAM_PORT="${STREAM_PORT:-1935}"
-STREAM_APPLICATION="${STREAM_APPLICATION:-hollystream1}"
-STREAM_KEY="${STREAM_KEY:-hollyvideostream1}"
+log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # ---------------------------------------------------------------------------
 # Connection / device defaults
 # ---------------------------------------------------------------------------
-STREAM_IP="${STREAM_IP:-127.0.0.1}"
+STREAM_IP="${STREAM_IP:-192.168.1.3}"
 STREAM_PORT="${STREAM_PORT:-1935}"
-STREAM_APPLICATION="${STREAM_APPLICATION:-live}"
-STREAM_KEY="${STREAM_KEY:-stream}"
+STREAM_APPLICATION="${STREAM_APPLICATION:-hollystream1}"
+STREAM_KEY="${STREAM_KEY:-hollyvideostream1}"
 CAMERA_INDEX="${CAMERA_INDEX:-0}"
 AUDIO_ENABLED="${AUDIO_ENABLED:-False}"
 AUDIO_DEVICE="${AUDIO_DEVICE:-hw:2,0}"
-WB_MODE="${WB_MODE:-1}"               # nvarguscamerasrc white balance (1 = auto)
+# Camera image tuning (CAMERA_* names match the .env; bare names work as aliases)
+WB_MODE="${CAMERA_WBMODE:-${WB_MODE:-1}}"            # white balance (0 = off, 1 = auto)
+TNR_MODE="${CAMERA_TNR_MODE:-2}"                     # temporal noise reduction (0 = off, 2 = high quality)
+TNR_STRENGTH="${CAMERA_TNR_STRENGTH:-1}"             # TNR strength 0.0 - 1.0
 
 # Audio encode settings (only used when AUDIO_ENABLED=True)
 AUDIO_BITRATE="${AUDIO_BITRATE:-128000}"
@@ -231,7 +239,7 @@ fi
 
 # Keyframe interval. Keep it short (default 2s) so the HLS packager can cut
 # clean, evenly sized fragments and new viewers join quickly.
-GOP_SECONDS="${GOP_SECONDS:-2}"
+GOP_SECONDS="${GOP_SECONDS:-${KEYINT_SECONDS:-2}}"
 GOP_SIZE=$(( OUT_FPS * GOP_SECONDS ))
 
 RTMP_URI="rtmp://${STREAM_IP}:${STREAM_PORT}/${STREAM_APPLICATION}/${STREAM_KEY}"
@@ -274,8 +282,8 @@ build_camera_source() {
     echo "nvarguscamerasrc sensor-id=${CAMERA_INDEX} \
         do-timestamp=true \
         wbmode=${WB_MODE} \
-        tnr-mode=2 \
-        tnr-strength=1 ! \
+        tnr-mode=${TNR_MODE} \
+        tnr-strength=${TNR_STRENGTH} ! \
         video/x-raw(memory:NVMM), \
             width=${CAP_W}, \
             height=${CAP_H}, \
