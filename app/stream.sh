@@ -273,6 +273,10 @@ echo -e "${BLUE}  Target:${NC} ${RTMP_URI}"
 QUEUE_PROPS="max-size-buffers=4 max-size-bytes=0 max-size-time=0"
 # Network-facing queue before the RTMP sink: bounded by time, leaks oldest data.
 SINK_QUEUE="max-size-buffers=0 max-size-bytes=0 max-size-time=$(( GOP_SECONDS * 1000000000 )) leaky=downstream"
+# Audio capture queue: large + leaky so ALSA never blocks while the camera spends
+# ~2-3s initializing. Stale audio is dropped (keeping A/V in sync) instead of the
+# source stalling, which was causing "Can't record audio fast enough" drops.
+AUDIO_QUEUE="max-size-buffers=0 max-size-bytes=0 max-size-time=2000000000 leaky=downstream"
 
 build_camera_source() {
     echo "nvarguscamerasrc sensor-id=${CAMERA_INDEX} \
@@ -306,9 +310,17 @@ build_video_encoder() {
 }
 
 build_audio_pipeline() {
-    echo "alsasrc device=${AUDIO_DEVICE} ! \
+    # do-timestamp=true + provide-clock=false: timestamp audio against the shared
+    # pipeline clock and stop ALSA from becoming the pipeline clock. This aligns
+    # audio and video running-times so flvmux no longer gets "backwards dts".
+    # audioconvert/audioresample make voaacenc's input negotiation robust.
+    echo "alsasrc device=${AUDIO_DEVICE} \
+        do-timestamp=true \
+        provide-clock=false ! \
         audio/x-raw,format=S16LE,channels=${AUDIO_CHANNELS},rate=${AUDIO_RATE} ! \
-        queue ${QUEUE_PROPS} ! \
+        queue ${AUDIO_QUEUE} ! \
+        audioconvert ! \
+        audioresample ! \
         voaacenc bitrate=${AUDIO_BITRATE} ! \
         queue ${QUEUE_PROPS} ! \
         mux."
