@@ -95,6 +95,24 @@ STREAM_KEY="${STREAM_KEY:-stream}"
 CAMERA_INDEX="${CAMERA_INDEX:-0}"
 CAMERA_ROTATION="${CAMERA_ROTATION:-180}"
 AUDIO_DEVICE="${AUDIO_DEVICE:-}"
+
+# ----- Image tuning (libcamera/rpicam-vid). Empty = camera auto. -----
+# To BRIGHTEN a dark image, prefer CAMERA_EV (exposure compensation in stops,
+# e.g. 0.5 or 1.0) -- it lets auto-exposure target brighter while balancing
+# shutter/gain. CAMERA_BRIGHTNESS (-1.0..1.0) is a simpler post-lift. Raising
+# gain brightens but adds noise (and noise costs bitrate), so pair brightening
+# with CAMERA_DENOISE=cdn_hq to keep the stream clean.
+CAMERA_EV="${CAMERA_EV:-}"               # exposure compensation, stops (brightens)
+CAMERA_BRIGHTNESS="${CAMERA_BRIGHTNESS:-}"   # -1.0..1.0 additive brightness
+CAMERA_GAIN="${CAMERA_GAIN:-}"           # analogue gain (ISO-like); higher = brighter + noisier
+CAMERA_SHUTTER="${CAMERA_SHUTTER:-}"     # fixed shutter in us; longer = brighter (caps fps)
+CAMERA_CONTRAST="${CAMERA_CONTRAST:-}"   # 0.0..~2.0 (1.0 = normal)
+CAMERA_SATURATION="${CAMERA_SATURATION:-}"
+CAMERA_SHARPNESS="${CAMERA_SHARPNESS:-}"
+CAMERA_AWB="${CAMERA_AWB:-}"             # auto|incandescent|tungsten|fluorescent|indoor|daylight|cloudy
+CAMERA_DENOISE="${CAMERA_DENOISE:-}"     # off|cdn_off|cdn_fast|cdn_hq
+CAMERA_METERING="${CAMERA_METERING:-}"   # centre|spot|average
+CAMERA_EXPOSURE="${CAMERA_EXPOSURE:-}"   # normal|sport|long
 USE_ENCODER="${USE_ENCODER:-cpu}"
 RESTART_DELAY="${RESTART_DELAY:-3}"
 CAMERA_BACKEND="${CAMERA_BACKEND:-auto}"
@@ -346,6 +364,25 @@ build_encoding_params() {
   esac
 }
 
+# Assemble optional rpicam-vid image-tuning flags (only those that are set).
+build_libcamera_tuning() {
+  local t=""
+  [ -n "$CAMERA_EV" ]         && t="$t --ev $CAMERA_EV"
+  [ -n "$CAMERA_BRIGHTNESS" ] && t="$t --brightness $CAMERA_BRIGHTNESS"
+  [ -n "$CAMERA_GAIN" ]       && t="$t --gain $CAMERA_GAIN"
+  [ -n "$CAMERA_SHUTTER" ]    && t="$t --shutter $CAMERA_SHUTTER"
+  [ -n "$CAMERA_CONTRAST" ]   && t="$t --contrast $CAMERA_CONTRAST"
+  [ -n "$CAMERA_SATURATION" ] && t="$t --saturation $CAMERA_SATURATION"
+  [ -n "$CAMERA_SHARPNESS" ]  && t="$t --sharpness $CAMERA_SHARPNESS"
+  [ -n "$CAMERA_AWB" ]        && t="$t --awb $CAMERA_AWB"
+  [ -n "$CAMERA_DENOISE" ]    && t="$t --denoise $CAMERA_DENOISE"
+  [ -n "$CAMERA_METERING" ]   && t="$t --metering $CAMERA_METERING"
+  [ -n "$CAMERA_EXPOSURE" ]   && t="$t --exposure $CAMERA_EXPOSURE"
+  echo "$t"
+}
+LIBCAMERA_TUNING="$(build_libcamera_tuning)"
+[ -n "$LIBCAMERA_TUNING" ] && log_info "Image tuning:${LIBCAMERA_TUNING}"
+
 ENCODER="$(choose_encoder "$USE_ENCODER")"
 [ "$ENCODER" = "v4l2m2m" ] && log_info "USB encoder: V4L2 M2M (auto-fallback to CPU on failure)." || log_info "USB encoder: CPU (libx264)."
 
@@ -405,6 +442,7 @@ run_once() {
         --framerate "$OUT_FPS" --rotation "$CAMERA_ROTATION" \
         --codec h264 --profile "${V4L2M2M_PROFILE}" --level "${V4L2M2M_LEVEL}" \
         --intra "${GOP_SIZE}" \
+        ${LIBCAMERA_TUNING} \
         --bitrate "${RPICAM_BPS}" -o - \| \
       ffmpeg -thread_queue_size 2048 -f h264 -r "$OUT_FPS" -probesize 50M -analyzeduration 2M -i - \
         ${AUDIO_INPUT} \
@@ -421,6 +459,7 @@ run_once() {
         --framerate "$OUT_FPS" --rotation "$CAMERA_ROTATION" \
         --codec h264 --profile "${V4L2M2M_PROFILE}" --level "${V4L2M2M_LEVEL}" \
         --intra "${GOP_SIZE}" \
+        ${LIBCAMERA_TUNING} \
         --bitrate "${RPICAM_BPS}" -o - \| \
       ffmpeg -thread_queue_size 2048 -f h264 -r "$OUT_FPS" -probesize 50M -analyzeduration 2M -i - \
         -c:v copy \
