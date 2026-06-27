@@ -64,7 +64,7 @@ RUN git clone --depth=1 https://github.com/raspberrypi/libcamera.git && \
 RUN git clone --depth=1 https://github.com/raspberrypi/rpicam-apps.git && \
     cd rpicam-apps && \
     meson setup build \
-        -Denable_libav=enabled \
+        -Denable_libav=disabled \
         -Denable_drm=enabled \
         -Denable_egl=disabled \
         -Denable_qt=disabled \
