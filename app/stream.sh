@@ -36,8 +36,8 @@
 #   custom        CAMERA_WIDTH x CAMERA_HEIGHT @ CAMERA_FPS  (legacy variables)
 #   <W>x<H>       explicit, e.g. STREAM_RESOLUTION=1600x900  (fps = CAMERA_FPS|30)
 #
-# STREAM_QUALITY     -> encoder rate-control + bitrate (bitrate auto-scales with
-#   (default: smooth)     the chosen resolution; override with VIDEO_BITRATE)
+# STREAM_QUALITY -> encoder rate-control + bitrate (bitrate auto-scales with
+#   (default: smooth) the chosen resolution; override with VIDEO_BITRATE)
 #
 #   Preset      Rate ctrl   Rel. bitrate   Notes
 #   ---------   ---------   ------------   -------------------------------------
@@ -77,9 +77,6 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# ---------------------------------------------------------------------------
-# Connection / device defaults
-# ---------------------------------------------------------------------------
 STREAM_IP="${STREAM_IP:-192.168.1.3}"
 STREAM_PORT="${STREAM_PORT:-1935}"
 STREAM_APPLICATION="${STREAM_APPLICATION:-hollystream1}"
@@ -87,7 +84,7 @@ STREAM_KEY="${STREAM_KEY:-hollyvideostream1}"
 CAMERA_INDEX="${CAMERA_INDEX:-0}"
 AUDIO_ENABLED="${AUDIO_ENABLED:-False}"
 AUDIO_DEVICE="${AUDIO_DEVICE:-hw:2,0}"
-# Camera image tuning (CAMERA_* names match the .env; bare names work as aliases)
+
 WB_MODE="${CAMERA_WBMODE:-${WB_MODE:-1}}"            # white balance (0 = off, 1 = auto)
 TNR_MODE="${CAMERA_TNR_MODE:-2}"                     # temporal noise reduction (0 = off, 2 = high quality)
 TNR_STRENGTH="${CAMERA_TNR_STRENGTH:-1}"             # TNR strength 0.0 - 1.0
@@ -138,7 +135,6 @@ case "$STREAM_RESOLUTION" in
         log_info "Using custom resolution from CAMERA_WIDTH/HEIGHT/FPS"
         ;;
     *)
-        # Allow an explicit WIDTHxHEIGHT string, e.g. STREAM_RESOLUTION=1600x900
         if [[ "$STREAM_RESOLUTION" =~ ^([0-9]+)x([0-9]+)$ ]]; then
             OUT_W="${BASH_REMATCH[1]}"
             OUT_H="${BASH_REMATCH[2]}"

@@ -2,31 +2,36 @@
 
 source .env
 
-if [[ -z "${DOCKER_USERNAME}" ]]; then
-    echo "Set your DOCKER_USERNAME in your .env file"
-    exit 1
-fi
+for var in DOCKER_USERNAME DOCKER_PASSWORD LATEST_VERSION; do
+    if [[ -z "${!var}" ]]; then
+        echo "Set ${var} in your .env file"
+        exit 1
+    fi
+done
 
-if [[ -z "${DOCKER_PASSWORD}" ]]; then
-    echo "Set your DOCKER_PASSWORD in your .env file"
-    exit 1
-fi
+echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
 
-if [[ -z "${LATEST_VERSION}" ]]; then
-    echo "Set the LATEST_VERSION in your .env file"
-    exit 1
-fi
+REPO="rcland12/detection-stream"
+IMAGES=(
+  jetson
+  jetson-triton
+  nginx
+)
 
-docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}
-docker images -q rcland12/detection-stream:jetson-latest | xargs -I{} docker tag {} rcland12/detection-stream:jetson-${LATEST_VERSION}
-docker images -q rcland12/detection-stream:jetson-triton-latest | xargs -I{} docker tag {} rcland12/detection-stream:jetson-triton-${LATEST_VERSION}
-docker images -q rcland12/detection-stream:nginx-latest | xargs -I{} docker tag {} rcland12/detection-stream:nginx-${LATEST_VERSION}
-docker push rcland12/detection-stream:jetson-${LATEST_VERSION}
-docker push rcland12/detection-stream:jetson-triton-${LATEST_VERSION}
-docker push rcland12/detection-stream:nginx-${LATEST_VERSION}
-docker rmi -f rcland12/detection-stream:jetson-${LATEST_VERSION}
-docker rmi -f rcland12/detection-stream:jetson-triton-${LATEST_VERSION}
-docker rmi -f rcland12/detection-stream:nginx-${LATEST_VERSION}
-docker push rcland12/detection-stream:jetson-latest
-docker push rcland12/detection-stream:jetson-triton-latest
-docker push rcland12/detection-stream:nginx-latest
+for IMAGE in "${IMAGES[@]}"; do
+    SRC_TAG="${REPO}:${IMAGE}-latest"
+    DST_TAG="${REPO}:${IMAGE}-${LATEST_VERSION}"
+    IMAGE_ID="$(docker images -q "${SRC_TAG}" || true)"
+
+    if [[ -z "${IMAGE_ID}" ]]; then
+        echo "WARNING: Source image not found locally: ${SRC_TAG} (skipping)"
+        continue
+    fi
+
+    docker tag "${IMAGE_ID}" "${DST_TAG}"
+    docker push "${DST_TAG}"
+    docker rmi -f "${DST_TAG}" || true
+    docker push "${SRC_TAG}"
+done
+
+echo "Finished pushing TAG=${LATEST_VERSION} and TAG=latest images."
