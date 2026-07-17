@@ -10,51 +10,51 @@ ARG BUILD_VERSION=${TORCHVISION_VERSION}
 
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
-        build-essential \
-        cmake \
-        git \
-        wget \
-        curl \
-        unzip \
-        ca-certificates \
-        ffmpeg \
-        libgtk2.0-dev \
-        pkg-config \
-        libavcodec-dev \
-        libavformat-dev \
-        libswscale-dev \
-        libgstreamer1.0-dev \
-        libgstreamer-plugins-base1.0-dev \
-        python2.7-dev \
-        python3.6-dev \
-        python-dev \
-        python-numpy \
-        python3-numpy \
-        python3-pip \
-        libtbb2 \
-        libtbb-dev \
-        libjpeg-dev \
-        libpng-dev \
-        libtiff-dev \
-        libdc1394-22-dev \
-        libv4l-dev \
-        v4l-utils \
-        qv4l2 \
-        v4l2ucp \
-        libopenblas-base \
-        libopenmpi-dev \
-        software-properties-common \
         autoconf \
         automake \
-        rapidjson-dev \
-        patchelf \
-        zlib1g-dev \
+        build-essential \
+        ca-certificates \
+        cmake \
+        curl \
+        ffmpeg \
+        git \
+        libavcodec-dev \
+        libavformat-dev \
         libb64-dev \
+        libboost-dev \
+        libcurl4-openssl-dev \
+        libdc1394-22-dev \
+        libgstreamer-plugins-base1.0-dev \
+        libgstreamer1.0-dev \
+        libgtk2.0-dev \
+        libjpeg-dev \
+        libopenblas-base \
+        libopenmpi-dev \
+        libpng-dev \
         libre2-dev \
         libssl-dev \
+        libswscale-dev \
+        libtbb-dev \
+        libtbb2 \
+        libtiff-dev \
         libtool \
-        libboost-dev \
-        libcurl4-openssl-dev
+        libv4l-dev \
+        patchelf \
+        pkg-config \
+        python-dev \
+        python-numpy \
+        python2.7-dev \
+        python3-numpy \
+        python3-pip \
+        python3.6-dev \
+        qv4l2 \
+        rapidjson-dev \
+        software-properties-common \
+        unzip \
+        v4l-utils \
+        v4l2ucp \
+        wget \
+        zlib1g-dev
 
 WORKDIR /app/build
 RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip && \

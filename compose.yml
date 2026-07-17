@@ -31,11 +31,19 @@ services:
       - 8001:8001
     shm_size: 256mb
     volumes:
-      - ./triton:/models
+      - ./triton/repository:/models
     env_file: .env
     runtime: nvidia
     healthcheck:
-      test: [ "CMD", "curl", "-i", "-X", "GET", "http://localhost:8000/v2/health/ready" ]
+      test:
+        [
+          "CMD",
+          "curl",
+          "-i",
+          "-X",
+          "GET",
+          "http://localhost:8000/v2/health/ready",
+        ]
       interval: 10s
       timeout: 20s
       retries: 6
