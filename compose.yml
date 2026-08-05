@@ -4,9 +4,7 @@ services:
   app:
     container_name: holly-stream-app
     image: rcland12/detection-stream:raspbian-latest
-    build:
-      context: ./app
-      dockerfile: Dockerfile
+    build: ./app
     restart: unless-stopped
     network_mode: host
     environment:
@@ -43,8 +41,6 @@ services:
       - /run/udev:/run/udev:ro
       - /sys:/sys:ro
       - /dev/shm:/dev/shm
-      - /usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu:ro
-      - /opt/vc:/opt/vc:ro
     security_opt:
       - apparmor:unconfined
       - seccomp:unconfined

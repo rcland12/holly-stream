@@ -87,7 +87,7 @@ RUN apt-get update && \
         kmod \
         libatlas-base-dev \
         libblas3 \
-        libboost-program-options1.81.0 \
+        libboost-program-options1.74.0 \
         libdrm2 \
         libexif12 \
         libgfortran5 \

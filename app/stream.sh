@@ -16,11 +16,12 @@
 # =============================================================================
 #
 # STREAM_RESOLUTION  -> output dimensions + aspect ratio + framerate
-#   (default: 4:3 -- matches the IMX519's 4:3 full-FOV sensor, no stretching)
+#   (default: auto -- derives the output from the detected full-FOV sensor mode)
 #
 #   Preset        Output        Aspect   FPS   Notes
 #   -----------   -----------   ------   ---   ----------------------------------
-#   4:3           1440x1080     4:3      30    full-FOV match for IMX519/IMX477
+#   auto          from sensor   sensor   30    full-FOV mode, scaled to <=1080
+#   4:3           1440x1080     4:3      30    matches a 4:3 sensor's full FOV
 #   720p_4:3      960x720       4:3      30    lower-bandwidth 4:3
 #   1080p         1920x1080     16:9     30    crops/stretches a 4:3 sensor mode
 #   720p          1280x720      16:9     30
@@ -44,13 +45,37 @@
 #   balanced    lower          good quality/performance        (alias: medium)
 #   fast        lowest         best for constrained uplinks     (alias: low)
 #
-# FULL FIELD OF VIEW (libcamera path):
-#   CAPTURE_WIDTH / CAPTURE_HEIGHT select the sensor mode fed to the ISP. Default
-#   is 2328x1748 -- the IMX519's full-sensor binned mode (full 4:3 FOV @ 30fps).
-#   The mode is verified against `rpicam-vid --list-cameras`; if your camera does
-#   not have it, the script falls back to auto mode (so it stays camera-agnostic).
-#   Discover your camera's full-FOV mode (look for crop "(0, 0)/<full>"):
+# =============================================================================
+# FULL FIELD OF VIEW (libcamera path) -- CAMERA-AGNOSTIC AUTO-DETECTION
+# =============================================================================
+#
+# Most Pi camera sensors expose a mix of FULL-SENSOR modes and CENTER-CROPPED
+# modes. The cropped modes look "zoomed in" and discard most of the view, and
+# they are often the ones libcamera picks by default for common sizes like
+# 1920x1080. To keep the whole field of view, this script reads
+# `rpicam-vid --list-cameras` at startup and selects the largest mode whose crop
+# rectangle covers the entire sensor array -- i.e. origin (0, 0) and crop
+# dimensions equal to the sensor's full resolution -- that can still sustain the
+# requested framerate.
+#
+# Examples of what that picks (nothing below is hardcoded; it is all detected):
+#
+#   Sensor    Full-FOV modes                    Cropped ("zoomed") modes
+#   -------   ------------------------------    ----------------------------
+#   IMX519    2328x1748 @30, 4656x3496 @9       1280x720, 1920x1080, 3840x2160
+#   OV5647    1296x972  @46, 2592x1944 @15.6    1920x1080
+#   IMX477    2028x1520 @40, 4056x3040 @10      1920x1080
+#   IMX708    2304x1296 @56, 4608x2592 @14      1536x864
+#
+# Override the detection by setting BOTH CAPTURE_WIDTH and CAPTURE_HEIGHT to a
+# mode your camera actually reports. If the requested mode is not available, the
+# script logs a warning and falls back to auto-detection. Set CAPTURE_MODE=auto
+# (the default) to always auto-detect, or CAPTURE_MODE=off to let libcamera
+# choose the mode itself (FOV may be cropped).
+#
+# Inspect your own camera's modes with:
 #       rpicam-vid --list-cameras
+# Full-FOV modes are the ones whose crop reads "(0, 0)/<full sensor size>".
 #
 # Other tunables (all optional, with defaults):
 #   VIDEO_BITRATE     force bitrate, e.g. 6000k (skips auto-calc)
@@ -58,13 +83,14 @@
 #   CAMERA_FPS        overrides the preset framerate when set
 #   CAMERA_ROTATION   0 or 180 (default 180)
 #   CAMERA_BACKEND    auto | libcamera | legacy | usb   (default auto)
-#   USE_ENCODER       cpu | v4l2m2m   (USB path only; default cpu)
-#   AUDIO_ENABLED     True | False    (REQUIRED)
+#   CAPTURE_MODE      auto | off        (default auto)
+#   USE_ENCODER       cpu | v4l2m2m     (USB path only; default cpu)
+#   AUDIO_ENABLED     True | False      (REQUIRED)
 #   AUDIO_DEVICE      e.g. hw:1,0 or pulse:<name> (auto-detected if empty)
 #   RESTART_DELAY     seconds between restart attempts (default 3)
 #
 # Examples:
-#   STREAM_RESOLUTION=4:3   STREAM_QUALITY=high   AUDIO_ENABLED=True  ./stream.sh
+#   STREAM_RESOLUTION=auto  STREAM_QUALITY=high   AUDIO_ENABLED=True  ./stream.sh
 #   STREAM_RESOLUTION=720p_4:3 STREAM_QUALITY=smooth AUDIO_ENABLED=False ./stream.sh
 # =============================================================================
 
@@ -101,7 +127,8 @@ AUDIO_DEVICE="${AUDIO_DEVICE:-}"
 # e.g. 0.5 or 1.0) -- it lets auto-exposure target brighter while balancing
 # shutter/gain. CAMERA_BRIGHTNESS (-1.0..1.0) is a simpler post-lift. Raising
 # gain brightens but adds noise (and noise costs bitrate), so pair brightening
-# with CAMERA_DENOISE=cdn_hq to keep the stream clean.
+# with CAMERA_DENOISE=cdn_hq to keep the stream clean. Smaller/older sensors
+# (e.g. OV5647) need more of this than larger modern ones (e.g. IMX519/IMX708).
 CAMERA_EV="${CAMERA_EV:-}"               # exposure compensation, stops (brightens)
 CAMERA_BRIGHTNESS="${CAMERA_BRIGHTNESS:-}"   # -1.0..1.0 additive brightness
 CAMERA_GAIN="${CAMERA_GAIN:-}"           # analogue gain (ISO-like); higher = brighter + noisier
@@ -116,13 +143,26 @@ CAMERA_EXPOSURE="${CAMERA_EXPOSURE:-}"   # normal|sport|long
 USE_ENCODER="${USE_ENCODER:-cpu}"
 RESTART_DELAY="${RESTART_DELAY:-3}"
 CAMERA_BACKEND="${CAMERA_BACKEND:-auto}"
+CAPTURE_MODE="${CAPTURE_MODE:-auto}"
+
+# Empty by default -> auto-detect the sensor's full-FOV mode at runtime.
+# Set BOTH to force a specific mode (verified against --list-cameras).
+CAPTURE_WIDTH="${CAPTURE_WIDTH:-}"
+CAPTURE_HEIGHT="${CAPTURE_HEIGHT:-}"
 
 # ---------------------------------------------------------------------------
 # RESOLUTION PRESET  -> OUT_W / OUT_H / OUT_FPS (the encoded/streamed size)
+# 'auto' leaves OUT_W/OUT_H empty here; they are derived from the detected
+# full-FOV capture mode further down.
 # ---------------------------------------------------------------------------
-STREAM_RESOLUTION="${STREAM_RESOLUTION:-4:3}"
+STREAM_RESOLUTION="${STREAM_RESOLUTION:-auto}"
+OUT_FROM_SENSOR="false"
 
 case "$STREAM_RESOLUTION" in
+    auto|full_fov|sensor)
+        OUT_W=""; OUT_H=""; OUT_FPS="${CAMERA_FPS:-30}"
+        OUT_FROM_SENSOR="true"
+        log_info "Output size will be derived from the sensor's full-FOV mode." ;;
     4:3|1080p_4:3) OUT_W=1440; OUT_H=1080; OUT_FPS=30 ;;
     720p_4:3)      OUT_W=960;  OUT_H=720;  OUT_FPS=30 ;;
     1080p|1080p30) OUT_W=1920; OUT_H=1080; OUT_FPS=30 ;;
@@ -143,8 +183,9 @@ case "$STREAM_RESOLUTION" in
             OUT_FPS="${CAMERA_FPS:-30}"
             log_info "Using explicit resolution ${OUT_W}x${OUT_H}"
         else
-            log_warn "Unknown STREAM_RESOLUTION '${STREAM_RESOLUTION}', defaulting to 4:3 (1440x1080)"
-            OUT_W=1440; OUT_H=1080; OUT_FPS=30
+            log_warn "Unknown STREAM_RESOLUTION '${STREAM_RESOLUTION}', defaulting to auto (sensor full-FOV)"
+            OUT_W=""; OUT_H=""; OUT_FPS="${CAMERA_FPS:-30}"
+            OUT_FROM_SENSOR="true"
         fi
         ;;
 esac
@@ -152,19 +193,175 @@ esac
 # CAMERA_FPS (if explicitly set) always wins, so existing configs keep working.
 [ -n "${CAMERA_FPS:-}" ] && OUT_FPS="$CAMERA_FPS"
 
+# ---------------------------------------------------------------------------
+# Backend detection
+# ---------------------------------------------------------------------------
+check_camera_backend() {
+  case "$CAMERA_BACKEND" in
+    libcamera)
+      if command -v rpicam-vid >/dev/null 2>&1; then echo "libcamera"; else echo "usb"; fi
+      return 0;;
+    legacy)
+      if command -v raspivid >/dev/null 2>&1; then echo "legacy"; else echo "usb"; fi
+      return 0;;
+    usb)
+      if [ -e "/dev/video${CAMERA_INDEX}" ]; then echo "usb"; else echo "libcamera"; fi
+      return 0;;
+    *)
+      if command -v rpicam-vid >/dev/null 2>&1; then echo "libcamera"; return 0; fi
+      if command -v raspivid >/dev/null 2>&1; then echo "legacy"; return 0; fi
+      if [ -e "/dev/video${CAMERA_INDEX}" ]; then echo "usb"; return 0; fi
+      echo "none"; return 1;;
+  esac
+}
+
+CAMERA_TYPE="$(check_camera_backend || echo none)"
+if [ "$CAMERA_TYPE" = "none" ]; then
+  log_error "No camera backend detected (rpicam-vid/raspivid or /dev/video*)."
+  exit 1
+fi
+log_info "Camera backend: ${CAMERA_TYPE}"
+
+# ---------------------------------------------------------------------------
+# SENSOR MODE DISCOVERY (libcamera). Fully camera-agnostic: parses
+# `rpicam-vid --list-cameras` and picks the largest FULL-SENSOR mode (crop
+# origin 0,0 and crop size == the sensor's largest crop rectangle) that can
+# sustain the requested framerate. Works for IMX519, OV5647, IMX477, IMX708,
+# IMX296, and any other sensor libcamera enumerates.
+#
+# Prints "WIDTH HEIGHT MAXFPS" on success; nothing on failure.
+# ---------------------------------------------------------------------------
+detect_full_fov_mode() {
+  local want_fps="$1" listing
+  listing="$(rpicam-vid --list-cameras 2>/dev/null)" || return 1
+  [ -z "$listing" ] && return 1
+
+  printf '%s\n' "$listing" | awk -v cam="$CAMERA_INDEX" -v want="$want_fps" '
+    # Camera header lines look like: "0 : imx519 [4656x3496 10-bit RGGB] (...)"
+    /^[[:space:]]*[0-9]+[[:space:]]*:[[:space:]]/ {
+      split($0, hdr, ":"); incam = ((hdr[1] + 0) == cam); next
+    }
+    incam {
+      line = $0
+      # Mode lines: "2328x1748 [30.00 fps - (0, 0)/4656x3496 crop]"
+      while (match(line, /[0-9]+x[0-9]+ \[[0-9.]+ fps - \([0-9]+, *[0-9]+\)\/[0-9]+x[0-9]+ crop\]/)) {
+        m = substr(line, RSTART, RLENGTH)
+        line = substr(line, RSTART + RLENGTH)
+        tmp = m
+        gsub(/[^0-9.]+/, " ", tmp)
+        split(tmp, f, " ")
+        n++
+        mw[n]=f[1]+0; mh[n]=f[2]+0; mf[n]=f[3]+0
+        cx[n]=f[4]+0; cy[n]=f[5]+0; cw[n]=f[6]+0; ch[n]=f[7]+0
+        area = cw[n] * ch[n]
+        if (area > maxcrop) maxcrop = area
+      }
+    }
+    END {
+      if (n == 0) exit 1
+      bw = bh = bf = 0; fallback_w = fallback_h = fallback_f = 0
+      for (i = 1; i <= n; i++) {
+        # Full FOV == starts at the origin and covers the whole sensor array.
+        if (cx[i] != 0 || cy[i] != 0) continue
+        if (cw[i] * ch[i] != maxcrop) continue
+        # Best fallback = highest framerate full-FOV mode, in case none is fast enough.
+        if (mf[i] > fallback_f) { fallback_w=mw[i]; fallback_h=mh[i]; fallback_f=mf[i] }
+        # Preferred = largest full-FOV mode that still meets the target fps.
+        if (mf[i] + 0.5 >= want && (mw[i] * mh[i]) > (bw * bh)) {
+          bw=mw[i]; bh=mh[i]; bf=mf[i]
+        }
+      }
+      if (bw > 0) { printf "%d %d %.2f\n", bw, bh, bf; exit 0 }
+      if (fallback_w > 0) { printf "%d %d %.2f\n", fallback_w, fallback_h, fallback_f; exit 0 }
+      exit 1
+    }
+  '
+}
+
+# Confirm a user-specified mode actually exists on this camera.
+mode_is_available() {
+  rpicam-vid --list-cameras 2>/dev/null | grep -q "${1}x${2} \["
+}
+
+LIBCAMERA_MODE_ARG=""
+CAPTURE_DESC="auto (libcamera chooses; FOV may be cropped)"
+CAPTURE_MAX_FPS=""
+
+if [ "$CAMERA_TYPE" = "libcamera" ] && [ "$CAPTURE_MODE" != "off" ]; then
+
+  # 1. Honor an explicit CAPTURE_WIDTH/HEIGHT if the camera really has it.
+  if [ -n "$CAPTURE_WIDTH" ] && [ -n "$CAPTURE_HEIGHT" ]; then
+    if mode_is_available "$CAPTURE_WIDTH" "$CAPTURE_HEIGHT"; then
+      LIBCAMERA_MODE_ARG="--mode ${CAPTURE_WIDTH}:${CAPTURE_HEIGHT}"
+      CAPTURE_DESC="${CAPTURE_WIDTH}x${CAPTURE_HEIGHT} (explicit)"
+      log_info "Using explicit sensor mode ${CAPTURE_WIDTH}x${CAPTURE_HEIGHT}."
+    else
+      log_warn "Sensor mode ${CAPTURE_WIDTH}x${CAPTURE_HEIGHT} not reported by this camera; auto-detecting instead."
+      CAPTURE_WIDTH=""; CAPTURE_HEIGHT=""
+    fi
+  fi
+
+  # 2. Otherwise auto-detect the largest full-FOV mode that meets OUT_FPS.
+  if [ -z "$LIBCAMERA_MODE_ARG" ]; then
+    DETECTED="$(detect_full_fov_mode "$OUT_FPS" || true)"
+    if [ -n "$DETECTED" ]; then
+      read -r CAPTURE_WIDTH CAPTURE_HEIGHT CAPTURE_MAX_FPS <<< "$DETECTED"
+      LIBCAMERA_MODE_ARG="--mode ${CAPTURE_WIDTH}:${CAPTURE_HEIGHT}"
+      CAPTURE_DESC="${CAPTURE_WIDTH}x${CAPTURE_HEIGHT} (full-FOV, max ${CAPTURE_MAX_FPS}fps)"
+      log_info "Auto-detected full-FOV sensor mode: ${CAPTURE_WIDTH}x${CAPTURE_HEIGHT} @ up to ${CAPTURE_MAX_FPS}fps."
+
+      # Cap the output framerate if the full-FOV mode cannot keep up. Streaming
+      # at a higher nominal fps than the sensor delivers just duplicates frames.
+      CAP_INT="${CAPTURE_MAX_FPS%.*}"
+      if [ -n "$CAP_INT" ] && [ "$CAP_INT" -gt 0 ] && [ "$OUT_FPS" -gt "$CAP_INT" ]; then
+        log_warn "Requested ${OUT_FPS}fps exceeds this mode's ${CAPTURE_MAX_FPS}fps ceiling; capping output to ${CAP_INT}fps."
+        log_warn "For a higher framerate, set CAPTURE_MODE=off (accepts a cropped FOV) or lower CAMERA_FPS."
+        OUT_FPS="$CAP_INT"
+      fi
+    else
+      log_warn "Could not determine a full-FOV sensor mode; letting libcamera choose (FOV may be cropped)."
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Derive the output size from the capture mode when STREAM_RESOLUTION=auto.
+# Scales down to the HW encoder's ~1080-line ceiling, preserving aspect ratio.
+# ---------------------------------------------------------------------------
+if [ "$OUT_FROM_SENSOR" = "true" ]; then
+  if [ -n "$CAPTURE_WIDTH" ] && [ -n "$CAPTURE_HEIGHT" ]; then
+    if [ "$CAPTURE_HEIGHT" -gt 1080 ]; then
+      OUT_H=1080
+      OUT_W=$(( (CAPTURE_WIDTH * 1080 / CAPTURE_HEIGHT + 8) / 16 * 16 ))   # round to /16
+    else
+      OUT_W=$(( CAPTURE_WIDTH  / 2 * 2 ))                                   # keep even
+      OUT_H=$(( CAPTURE_HEIGHT / 2 * 2 ))
+    fi
+    log_info "Derived output ${OUT_W}x${OUT_H} from capture ${CAPTURE_WIDTH}x${CAPTURE_HEIGHT}."
+  else
+    OUT_W=1440; OUT_H=1080
+    log_warn "No capture mode detected; falling back to 1440x1080 output."
+  fi
+fi
+
 # Keep these populated for the 'custom' path / display.
 CAMERA_WIDTH="${CAMERA_WIDTH:-$OUT_W}"
 CAMERA_HEIGHT="${CAMERA_HEIGHT:-$OUT_H}"
 CAMERA_FPS="$OUT_FPS"
 DIMS="${OUT_W}x${OUT_H}"
 
-# ---------------------------------------------------------------------------
-# CAPTURE MODE (libcamera) -> full-FOV sensor mode fed to the ISP downscaler.
-# Default = IMX519 full-sensor binned mode. Verified at runtime; falls back to
-# auto if unavailable, so the script works on any Pi camera.
-# ---------------------------------------------------------------------------
-CAPTURE_WIDTH="${CAPTURE_WIDTH:-2328}"
-CAPTURE_HEIGHT="${CAPTURE_HEIGHT:-1748}"
+# The Pi hardware H.264 encoder (libcamera/legacy paths) tops out near 1080 lines.
+if [ "$CAMERA_TYPE" != "usb" ] && [ "$OUT_H" -gt 1080 ]; then
+  log_warn "Output height ${OUT_H} exceeds the Pi HW encoder's ~1080-line limit; expect failure or fallback. Use an output <=1080 tall."
+fi
+
+# Upscaling past the capture size spends bitrate on invented detail.
+if [ -n "$CAPTURE_WIDTH" ] && [ -n "$CAPTURE_HEIGHT" ]; then
+  if [ "$OUT_W" -gt "$CAPTURE_WIDTH" ] || [ "$OUT_H" -gt "$CAPTURE_HEIGHT" ]; then
+    log_warn "Output ${OUT_W}x${OUT_H} is larger than capture ${CAPTURE_WIDTH}x${CAPTURE_HEIGHT}; the ISP will upscale (no added detail, higher bitrate)."
+    log_warn "Consider STREAM_RESOLUTION=auto, or a preset at/below the capture size."
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # KEYFRAME interval. Keep ~2s so keyframes align with the downstream HLS
@@ -230,64 +427,29 @@ detect_pi_model() {
 }
 detect_pi_model
 
+# Report the sensor libcamera actually found, whatever it is.
+detect_sensor_name() {
+  if [ "$CAMERA_TYPE" = "libcamera" ] && command -v rpicam-vid >/dev/null 2>&1; then
+    local NAME
+    NAME="$(rpicam-vid --list-cameras 2>/dev/null \
+            | awk -v cam="$CAMERA_INDEX" '/^[[:space:]]*[0-9]+[[:space:]]*:[[:space:]]/ {
+                split($0, h, ":"); if ((h[1]+0) == cam) { print $3; exit }
+              }')"
+    [ -n "$NAME" ] && log_info "Sensor: ${NAME}"
+  fi
+}
+detect_sensor_name
+
 log_info "Stream Configuration:"
 echo -e "${BLUE}  Resolution preset:${NC} ${STREAM_RESOLUTION}"
 echo -e "${BLUE}  Output:${NC} ${OUT_W}x${OUT_H} @ ${OUT_FPS}fps"
-echo -e "${BLUE}  Capture (libcamera):${NC} ${CAPTURE_WIDTH}x${CAPTURE_HEIGHT} (full-FOV, downscaled)"
+echo -e "${BLUE}  Capture (libcamera):${NC} ${CAPTURE_DESC}"
 echo -e "${BLUE}  Quality:${NC} ${STREAM_QUALITY} -> ${VIDEO_BITRATE} (max ${MAX_BITRATE}, buf ${BUFFER_SIZE})"
 echo -e "${BLUE}  Keyframe interval:${NC} ${GOP_SIZE} frames (${GOP_SECONDS}s)"
 echo -e "${BLUE}  Rotation:${NC} ${CAMERA_ROTATION}"
 echo -e "${BLUE}  Audio:${NC} ${AUDIO_ENABLED} (device='${AUDIO_DEVICE}')"
 echo -e "${BLUE}  Backend/Encoder:${NC} ${CAMERA_BACKEND} / ${USE_ENCODER}"
 echo -e "${BLUE}  Target:${NC} rtmp://${STREAM_IP}:${STREAM_PORT}/${STREAM_APPLICATION}/${STREAM_KEY}"
-
-# ---------------------------------------------------------------------------
-# Backend detection
-# ---------------------------------------------------------------------------
-check_camera_backend() {
-  case "$CAMERA_BACKEND" in
-    libcamera)
-      if command -v rpicam-vid >/dev/null 2>&1; then echo "libcamera"; else echo "usb"; fi
-      return 0;;
-    legacy)
-      if command -v raspivid >/dev/null 2>&1; then echo "legacy"; else echo "usb"; fi
-      return 0;;
-    usb)
-      if [ -e "/dev/video${CAMERA_INDEX}" ]; then echo "usb"; else echo "libcamera"; fi
-      return 0;;
-    *)
-      if command -v rpicam-vid >/dev/null 2>&1; then echo "libcamera"; return 0; fi
-      if command -v raspivid >/dev/null 2>&1; then echo "legacy"; return 0; fi
-      if [ -e "/dev/video${CAMERA_INDEX}" ]; then echo "usb"; return 0; fi
-      echo "none"; return 1;;
-  esac
-}
-
-CAMERA_TYPE="$(check_camera_backend || echo none)"
-if [ "$CAMERA_TYPE" = "none" ]; then
-  log_error "No camera backend detected (rpicam-vid/raspivid or /dev/video*)."
-  exit 1
-fi
-log_info "Camera backend: ${CAMERA_TYPE}"
-
-# The Pi hardware H.264 encoder (libcamera/legacy paths) tops out near 1080 lines.
-if [ "$CAMERA_TYPE" != "usb" ] && [ "$OUT_H" -gt 1080 ]; then
-  log_warn "Output height ${OUT_H} exceeds the Pi HW encoder's ~1080-line limit; expect failure or fallback. Use an output <=1080 tall."
-fi
-
-# ---------------------------------------------------------------------------
-# Verify the full-FOV capture mode exists (libcamera). Keeps us camera-agnostic:
-# unknown mode -> auto (rpicam picks a mode, FOV may be cropped).
-# ---------------------------------------------------------------------------
-LIBCAMERA_MODE_ARG=""
-if [ "$CAMERA_TYPE" = "libcamera" ] && [ -n "$CAPTURE_WIDTH" ] && [ -n "$CAPTURE_HEIGHT" ]; then
-  if rpicam-vid --list-cameras 2>/dev/null | grep -q "${CAPTURE_WIDTH}x${CAPTURE_HEIGHT}"; then
-    LIBCAMERA_MODE_ARG="--mode ${CAPTURE_WIDTH}:${CAPTURE_HEIGHT}"
-    log_info "Full-FOV sensor mode ${CAPTURE_WIDTH}x${CAPTURE_HEIGHT} available."
-  else
-    log_warn "Sensor mode ${CAPTURE_WIDTH}x${CAPTURE_HEIGHT} not found on this camera; using auto mode (FOV may be cropped)."
-  fi
-fi
 
 # ---------------------------------------------------------------------------
 # Audio input (ffmpeg). Auto-detect ALSA/Pulse if AUDIO_DEVICE is empty.
