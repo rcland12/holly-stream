@@ -1,3 +1,14 @@
+"""YOLO ONNX to TensorRT-compatible ONNX converter.
+
+This module converts YOLO ONNX models to TensorRT-compatible ONNX models by
+replacing the standard NMS operation with the EfficientNMS_TRT plugin. It
+automatically detects and extracts bounding box and score tensors from various
+YOLO export formats.
+
+Typical usage:
+    python yolo_efficient_nms_converter.py --in model.onnx --out model_trt.onnx
+"""
+
 import argparse
 from typing import Dict, Optional, Tuple
 
@@ -5,87 +16,165 @@ import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 
-
-def tmap_all(g: gs.Graph) -> Dict[str, gs.Variable]:
-    """Map every tensor name (inputs, intermediate, outputs) to a gs.Variable."""
-    m = {t.name: t for t in g.tensors().values()}
-    for n in g.nodes:
-        for o in n.outputs:
-            m.setdefault(o.name, o)
-    for o in g.outputs:
-        m.setdefault(o.name, o)
-    for i in g.inputs:
-        m.setdefault(i.name, i)
-    return m
+DEFAULT_NUM_CLASSES = 80
+DEFAULT_BOX_COORDS = 4
+DEFAULT_HEAD_CHANNELS = DEFAULT_NUM_CLASSES + DEFAULT_BOX_COORDS  # 84
 
 
-def try_find_boxes_scores_from_slices(
-    g: gs.Graph,
+def build_tensor_name_map(graph: gs.Graph) -> Dict[str, gs.Variable]:
+    """Build a mapping from tensor names to their corresponding gs.Variable objects.
+
+    Creates a comprehensive map of all tensors in the graph, including inputs,
+    outputs, and intermediate tensors from nodes.
+
+    Args:
+        graph: The ONNX graph to analyze.
+
+    Returns:
+        A dictionary mapping tensor names (str) to gs.Variable objects.
+    """
+    tensor_map = {tensor.name: tensor for tensor in graph.tensors().values()}
+
+    for node in graph.nodes:
+        for output in node.outputs:
+            tensor_map.setdefault(output.name, output)
+
+    for output in graph.outputs:
+        tensor_map.setdefault(output.name, output)
+
+    for input_tensor in graph.inputs:
+        tensor_map.setdefault(input_tensor.name, input_tensor)
+
+    return tensor_map
+
+
+def _is_valid_3d_shape(shape: object) -> bool:
+    """Check if a shape is a valid 3-dimensional shape.
+
+    Args:
+        shape: The shape to validate.
+
+    Returns:
+        True if the shape is a list or tuple with exactly 3 elements.
+    """
+    return isinstance(shape, (list, tuple)) and len(shape) == 3
+
+
+def find_boxes_and_scores_from_slices(
+    graph: gs.Graph,
 ) -> Tuple[Optional[gs.Variable], Optional[gs.Variable], str]:
-    """
-    Look for typical YOLO decoded outputs:
-      boxes:  Slice -> (1, N, 4)
-      scores: Slice -> (1, N, 80)
-    Returns (boxes, scores, dbg). If not found, returns (None, None, reason).
-    """
-    m = tmap_all(g)
-    boxes, scores = None, None
-    for n in g.nodes:
-        if n.op != "Slice":
-            continue
-        if not n.outputs or len(n.outputs) != 1:
-            continue
-        out = n.outputs[0]
-        shp = getattr(out, "shape", None)
-        if not (isinstance(shp, (list, tuple)) and len(shp) == 3):
-            continue
-        if shp[2] == 4 and boxes is None:
-            boxes = out
-        elif shp[2] == 80 and scores is None:
-            scores = out
-    if boxes is not None and scores is not None:
-        dbg = f"found Slice outputs: boxes={boxes.name} {boxes.shape}, scores={scores.name} {scores.shape}"
-        return boxes, scores, dbg
+    """Attempt to find box and score tensors from Slice operation outputs.
 
-    cand_boxes = [
-        m[k]
-        for k in m
-        if k.endswith("/Slice_output_0") or k.endswith("Slice_output_0")
+    Searches for typical YOLO decoded outputs where boxes and scores are
+    produced by Slice operations with specific shapes:
+        - boxes: Slice -> (1, N, 4)
+        - scores: Slice -> (1, N, 80)
+
+    Args:
+        graph: The ONNX graph to search.
+
+    Returns:
+        A tuple containing:
+            - boxes_tensor: The detected boxes tensor, or None if not found.
+            - scores_tensor: The detected scores tensor, or None if not found.
+            - debug_message: A string describing the detection result.
+    """
+    tensor_map = build_tensor_name_map(graph)
+    boxes_tensor = None
+    scores_tensor = None
+
+    for node in graph.nodes:
+        if node.op != "Slice":
+            continue
+        if not node.outputs or len(node.outputs) != 1:
+            continue
+
+        output_tensor = node.outputs[0]
+        shape = getattr(output_tensor, "shape", None)
+
+        if not _is_valid_3d_shape(shape):
+            continue
+
+        if shape[2] == DEFAULT_BOX_COORDS and boxes_tensor is None:
+            boxes_tensor = output_tensor
+        elif shape[2] == DEFAULT_NUM_CLASSES and scores_tensor is None:
+            scores_tensor = output_tensor
+
+    if boxes_tensor is not None and scores_tensor is not None:
+        debug_message = (
+            f"found Slice outputs: "
+            f"boxes={boxes_tensor.name} {boxes_tensor.shape}, "
+            f"scores={scores_tensor.name} {scores_tensor.shape}"
+        )
+        return boxes_tensor, scores_tensor, debug_message
+
+    candidate_boxes = [
+        tensor_map[name]
+        for name in tensor_map
+        if name.endswith("/Slice_output_0") or name.endswith("Slice_output_0")
     ]
-    cand_scores = [
-        m[k]
-        for k in m
-        if k.endswith("/Slice_1_output_0") or k.endswith("Slice_1_output_0")
+    candidate_scores = [
+        tensor_map[name]
+        for name in tensor_map
+        if name.endswith("/Slice_1_output_0")
+        or name.endswith("Slice_1_output_0")
     ]
-    if cand_boxes and cand_scores:
-        return cand_boxes[0], cand_scores[0], "fallback by common YOLO names"
+
+    if candidate_boxes and candidate_scores:
+        return (
+            candidate_boxes[0],
+            candidate_scores[0],
+            "fallback by common YOLO names",
+        )
 
     return None, None, "no (1,N,4) and (1,N,80) Slice outputs found"
 
 
-def find_head_84_and_slice(
-    g: gs.Graph,
+def find_head_tensor_and_create_slices(
+    graph: gs.Graph,
 ) -> Tuple[gs.Variable, gs.Variable, str]:
-    """
-    Fallback: find decoded head with 84 channels in BCN [1,84,N] or BNC [1,N,84],
-    convert to BNC, then slice out boxes [1,N,4] and scores [1,N,80].
-    """
+    """Find the decoded head tensor and create box/score slices from it.
 
-    def is3(s):
-        return isinstance(s, (list, tuple)) and len(s) == 3
+    This is a fallback method that searches for a decoded head tensor with 84
+    channels (4 box coords + 80 class scores). The tensor can be in either:
+        - BCN format: [1, 84, N] (requires transpose)
+        - BNC format: [1, N, 84]
 
-    m = tmap_all(g)
-    bcn, bnc = [], []
-    for name, t in m.items():
-        s = getattr(t, "shape", None)
-        if not is3(s):
+    Once found, the function creates Slice operations to extract:
+        - boxes: [1, N, 4] from channels 0-3
+        - scores: [1, N, 80] from channels 4-83
+
+    Args:
+        graph: The ONNX graph to modify.
+
+    Returns:
+        A tuple containing:
+            - boxes_tensor: The created boxes tensor.
+            - scores_tensor: The created scores tensor.
+            - debug_message: A string describing the operation performed.
+
+    Raises:
+        RuntimeError: If no tensor with 84 channels can be found.
+    """
+    tensor_map = build_tensor_name_map(graph)
+
+    bcn_candidates = []
+    bnc_candidates = []
+
+    for name, tensor in tensor_map.items():
+        shape = getattr(tensor, "shape", None)
+        if not _is_valid_3d_shape(shape):
             continue
-        if s[1] == 84:
-            bcn.append((name, t, s))
-        if s[2] == 84:
-            bnc.append((name, t, s))
 
-    def pref_key(item):
+        if shape[1] == DEFAULT_HEAD_CHANNELS:
+            bcn_candidates.append((name, tensor, shape))
+        if shape[2] == DEFAULT_HEAD_CHANNELS:
+            bnc_candidates.append((name, tensor, shape))
+
+    def _compute_preference_score(
+        item: Tuple[str, gs.Variable, list],
+    ) -> Tuple[int, str]:
+        """Compute sorting key preferring Concat nodes and model subgraphs."""
         name, _, _ = item
         score = 0
         if "Concat" in name:
@@ -94,189 +183,323 @@ def find_head_84_and_slice(
             score -= 1
         return (score, name)
 
-    bcn.sort(key=pref_key)
-    bnc.sort(key=pref_key)
+    bcn_candidates.sort(key=_compute_preference_score)
+    bnc_candidates.sort(key=_compute_preference_score)
 
-    if bcn:
-        name, head_bcn, s = bcn[0]
-        head_bnc = gs.Variable("head_bnc", dtype=np.float32, shape=[1, -1, 84])
-        g.nodes.append(
+    head_tensor_bnc = None
+    source_description = ""
+
+    if bcn_candidates:
+        name, head_tensor_bcn, shape = bcn_candidates[0]
+        head_tensor_bnc = gs.Variable(
+            "head_bnc",
+            dtype=np.float32,
+            shape=[1, -1, DEFAULT_HEAD_CHANNELS],
+        )
+        graph.nodes.append(
             gs.Node(
                 op="Transpose",
                 name="node_head_transpose",
-                inputs=[head_bcn],
-                outputs=[head_bnc],
+                inputs=[head_tensor_bcn],
+                outputs=[head_tensor_bnc],
                 attrs={"perm": [0, 2, 1]},
             )
         )
-        src = f"head BCN {name} {s} -> transpose -> [1,N,84]"
-    elif bnc:
-        name, head_bnc, s = bnc[0]
-        src = f"head BNC {name} {s}"
+        source_description = (
+            f"head BCN {name} {shape} -> transpose -> [1,N,84]"
+        )
+
+    elif bnc_candidates:
+        name, head_tensor_bnc, shape = bnc_candidates[0]
+        source_description = f"head BNC {name} {shape}"
+
     else:
-        for n in g.nodes:
-            if n.op == "Concat" and n.outputs:
-                name = n.outputs[0].name
-                head_bcn = m[name]
-                head_bnc = gs.Variable(
-                    "head_bnc", dtype=np.float32, shape=[1, -1, 84]
+        for node in graph.nodes:
+            if node.op == "Concat" and node.outputs:
+                concat_output_name = node.outputs[0].name
+                head_tensor_bcn = tensor_map[concat_output_name]
+                head_tensor_bnc = gs.Variable(
+                    "head_bnc",
+                    dtype=np.float32,
+                    shape=[1, -1, DEFAULT_HEAD_CHANNELS],
                 )
-                g.nodes.append(
+                graph.nodes.append(
                     gs.Node(
                         op="Transpose",
                         name="node_head_transpose_fb",
-                        inputs=[head_bcn],
-                        outputs=[head_bnc],
+                        inputs=[head_tensor_bcn],
+                        outputs=[head_tensor_bnc],
                         attrs={"perm": [0, 2, 1]},
                     )
                 )
-                src = f"fallback Concat {name} -> transpose -> [1,N,84]"
+                source_description = f"fallback Concat {concat_output_name} -> transpose -> [1,N,84]"
                 break
         else:
             raise RuntimeError(
                 "Could not locate a decoded head with 84 channels."
             )
 
-    def const_i32(name, val):
-        return gs.Constant(name=name, values=np.array(val, dtype=np.int32))
+    boxes_tensor, scores_tensor = _create_box_score_slices(
+        graph, head_tensor_bnc
+    )
 
-    boxes = gs.Variable("boxes_bnc", dtype=np.float32, shape=[1, -1, 4])
-    g.nodes.append(
+    debug_message = (
+        f"{source_description}; sliced boxes [1,N,4] and scores [1,N,80]"
+    )
+    return boxes_tensor, scores_tensor, debug_message
+
+
+def _create_int32_constant(name: str, values: list) -> gs.Constant:
+    """Create an int32 constant tensor for Slice operation parameters.
+
+    Args:
+        name: The name for the constant tensor.
+        values: The integer values for the constant.
+
+    Returns:
+        A gs.Constant object with int32 dtype.
+    """
+    return gs.Constant(name=name, values=np.array(values, dtype=np.int32))
+
+
+def _create_box_score_slices(
+    graph: gs.Graph,
+    head_tensor: gs.Variable,
+) -> Tuple[gs.Variable, gs.Variable]:
+    """Create Slice operations to extract boxes and scores from the head tensor.
+
+    Args:
+        graph: The ONNX graph to modify.
+        head_tensor: The head tensor in BNC format [1, N, 84].
+
+    Returns:
+        A tuple containing:
+            - boxes_tensor: The sliced boxes tensor [1, N, 4].
+            - scores_tensor: The sliced scores tensor [1, N, 80].
+    """
+    boxes_tensor = gs.Variable(
+        "boxes_bnc",
+        dtype=np.float32,
+        shape=[1, -1, DEFAULT_BOX_COORDS],
+    )
+    graph.nodes.append(
         gs.Node(
             op="Slice",
             name="slice_boxes_from_head",
             inputs=[
-                head_bnc,
-                const_i32("starts_boxes", [0, 0, 0]),
-                const_i32("ends_boxes", [1, -1, 4]),
-                const_i32("axes_boxes", [0, 1, 2]),
-                const_i32("steps_boxes", [1, 1, 1]),
+                head_tensor,
+                _create_int32_constant("starts_boxes", [0, 0, 0]),
+                _create_int32_constant(
+                    "ends_boxes", [1, -1, DEFAULT_BOX_COORDS]
+                ),
+                _create_int32_constant("axes_boxes", [0, 1, 2]),
+                _create_int32_constant("steps_boxes", [1, 1, 1]),
             ],
-            outputs=[boxes],
+            outputs=[boxes_tensor],
         )
     )
 
-    scores = gs.Variable("scores_bnc", dtype=np.float32, shape=[1, -1, 80])
-    g.nodes.append(
+    scores_tensor = gs.Variable(
+        "scores_bnc",
+        dtype=np.float32,
+        shape=[1, -1, DEFAULT_NUM_CLASSES],
+    )
+    graph.nodes.append(
         gs.Node(
             op="Slice",
             name="slice_scores_from_head",
             inputs=[
-                head_bnc,
-                const_i32("starts_scores", [0, 0, 4]),
-                const_i32("ends_scores", [1, -1, 84]),
-                const_i32("axes_scores", [0, 1, 2]),
-                const_i32("steps_scores", [1, 1, 1]),
+                head_tensor,
+                _create_int32_constant(
+                    "starts_scores", [0, 0, DEFAULT_BOX_COORDS]
+                ),
+                _create_int32_constant(
+                    "ends_scores", [1, -1, DEFAULT_HEAD_CHANNELS]
+                ),
+                _create_int32_constant("axes_scores", [0, 1, 2]),
+                _create_int32_constant("steps_scores", [1, 1, 1]),
             ],
-            outputs=[scores],
+            outputs=[scores_tensor],
         )
     )
 
-    return boxes, scores, f"{src}; sliced boxes [1,N,4] and scores [1,N,80]"
+    return boxes_tensor, scores_tensor
 
 
-def insert_efficientnms_and_prune(
-    g: gs.Graph,
-    boxes: gs.Variable,
-    scores: gs.Variable,
-    keep_topk: int,
-    score_thresh: float,
-    iou_thresh: float,
-    scores_are_probs: bool = True,
-    box_coding_xyxy: bool = True,
+def insert_efficient_nms_and_prune(
+    graph: gs.Graph,
+    boxes_tensor: gs.Variable,
+    scores_tensor: gs.Variable,
+    max_detections: int,
+    score_threshold: float,
+    iou_threshold: float,
+    scores_are_probabilities: bool = True,
+    boxes_are_xyxy: bool = True,
 ) -> None:
-    if boxes.shape is None or len(boxes.shape) != 3:
-        boxes.shape = [1, -1, 4]
-    if scores.shape is None or len(scores.shape) != 3:
-        scores.shape = [1, -1, 80]
+    """Insert the EfficientNMS_TRT plugin and prune unnecessary nodes.
 
-    out_count = gs.Variable("nms_num_dets", dtype=np.int32, shape=[1])
-    out_boxes = gs.Variable(
-        "nms_boxes", dtype=np.float32, shape=[1, keep_topk, 4]
+    Adds the TensorRT EfficientNMS plugin to the graph and removes any existing
+    NonMaxSuppression operations. The graph outputs are replaced with the NMS
+    plugin outputs.
+
+    Args:
+        graph: The ONNX graph to modify.
+        boxes_tensor: The input boxes tensor [1, N, 4].
+        scores_tensor: The input scores tensor [1, N, num_classes].
+        max_detections: Maximum number of detections to keep.
+        score_threshold: Minimum score threshold for detections.
+        iou_threshold: IoU threshold for NMS.
+        scores_are_probabilities: If True, scores are already probabilities.
+            If False, sigmoid activation will be applied.
+        boxes_are_xyxy: If True, boxes are in xyxy format.
+            If False, boxes are in xywh format.
+    """
+    if boxes_tensor.shape is None or len(boxes_tensor.shape) != 3:
+        boxes_tensor.shape = [1, -1, DEFAULT_BOX_COORDS]
+    if scores_tensor.shape is None or len(scores_tensor.shape) != 3:
+        scores_tensor.shape = [1, -1, DEFAULT_NUM_CLASSES]
+
+    output_num_detections = gs.Variable(
+        "nms_num_dets",
+        dtype=np.int32,
+        shape=[1],
     )
-    out_scores = gs.Variable(
-        "nms_scores", dtype=np.float32, shape=[1, keep_topk]
+    output_boxes = gs.Variable(
+        "nms_boxes",
+        dtype=np.float32,
+        shape=[1, max_detections, DEFAULT_BOX_COORDS],
     )
-    out_labels = gs.Variable(
-        "nms_classes", dtype=np.int32, shape=[1, keep_topk]
+    output_scores = gs.Variable(
+        "nms_scores",
+        dtype=np.float32,
+        shape=[1, max_detections],
+    )
+    output_class_ids = gs.Variable(
+        "nms_classes",
+        dtype=np.int32,
+        shape=[1, max_detections],
     )
 
-    g.nodes.append(
+    graph.nodes.append(
         gs.Node(
             op="EfficientNMS_TRT",
             name="node_efficientnms_trt",
-            inputs=[boxes, scores],
-            outputs=[out_count, out_boxes, out_scores, out_labels],
+            inputs=[boxes_tensor, scores_tensor],
+            outputs=[
+                output_num_detections,
+                output_boxes,
+                output_scores,
+                output_class_ids,
+            ],
             attrs={
                 "plugin_version": "1",
                 "background_class": -1,
-                "max_output_boxes": int(keep_topk),
-                "score_threshold": float(score_thresh),
-                "iou_threshold": float(iou_thresh),
-                "score_activation": False if scores_are_probs else True,
-                "box_coding": 0 if box_coding_xyxy else 1,
+                "max_output_boxes": int(max_detections),
+                "score_threshold": float(score_threshold),
+                "iou_threshold": float(iou_threshold),
+                "score_activation": not scores_are_probabilities,
+                "box_coding": 0 if boxes_are_xyxy else 1,
             },
         )
     )
 
-    g.outputs = [out_count, out_boxes, out_scores, out_labels]
+    graph.outputs = [
+        output_num_detections,
+        output_boxes,
+        output_scores,
+        output_class_ids,
+    ]
 
-    g.nodes = [n for n in g.nodes if n.op not in {"NonMaxSuppression"}]
+    graph.nodes = [
+        node for node in graph.nodes if node.op != "NonMaxSuppression"
+    ]
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument(
+def parse_arguments() -> argparse.Namespace:
+    """Parse command line arguments.
+
+    Returns:
+        Parsed command line arguments.
+    """
+    parser = argparse.ArgumentParser(
+        description="Convert YOLO ONNX model to TensorRT-compatible format with EfficientNMS."
+    )
+    parser.add_argument(
         "--in",
-        dest="in_onnx",
+        dest="input_onnx",
         required=True,
-        help="Input ONNX (exported with nms=True)",
+        help="Input ONNX model path (exported with nms=True).",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--out",
-        dest="out_onnx",
+        dest="output_onnx",
         required=True,
-        help="Output ONNX (TRT-friendly)",
+        help="Output ONNX model path (TRT-friendly).",
     )
-    ap.add_argument("--keep_topk", type=int, default=100)
-    ap.add_argument("--score_thresh", type=float, default=0.5)
-    ap.add_argument("--iou_thresh", type=float, default=0.45)
-    ap.add_argument(
+    parser.add_argument(
+        "--keep_topk",
+        type=int,
+        default=100,
+        help="Maximum number of detections to keep (default: 100).",
+    )
+    parser.add_argument(
+        "--score_thresh",
+        type=float,
+        default=0.5,
+        help="Score threshold for detections (default: 0.5).",
+    )
+    parser.add_argument(
+        "--iou_thresh",
+        type=float,
+        default=0.45,
+        help="IoU threshold for NMS (default: 0.45).",
+    )
+    parser.add_argument(
         "--scores_are_logits",
         action="store_true",
-        help="Set if the class scores are raw logits (rare for YOLO exports).",
+        help="Set if class scores are raw logits (rare for YOLO exports).",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--boxes_are_xywh",
         action="store_true",
-        help="Set if the 4 coords are xywh instead of xyxy (default xyxy).",
+        help="Set if box coordinates are xywh instead of xyxy (default: xyxy).",
     )
-    args = ap.parse_args()
+    return parser.parse_args()
 
-    print(f"[load] {args.in_onnx}")
-    g = gs.import_onnx(onnx.load(args.in_onnx))
 
-    boxes, scores, dbg = try_find_boxes_scores_from_slices(g)
-    print(f"[detect] {dbg}")
-    if boxes is None or scores is None:
-        boxes, scores, dbg2 = find_head_84_and_slice(g)
-        print(f"[fallback] {dbg2}")
+def main() -> None:
+    """Main entry point for the YOLO to TensorRT converter."""
+    args = parse_arguments()
 
-    insert_efficientnms_and_prune(
-        g,
-        boxes=boxes,
-        scores=scores,
-        keep_topk=args.keep_topk,
-        score_thresh=args.score_thresh,
-        iou_thresh=args.iou_thresh,
-        scores_are_probs=not args.scores_are_logits,
-        box_coding_xyxy=not args.boxes_are_xywh,
+    print(f"[load] {args.input_onnx}")
+    graph = gs.import_onnx(onnx.load(args.input_onnx))
+
+    boxes_tensor, scores_tensor, debug_message = (
+        find_boxes_and_scores_from_slices(graph)
+    )
+    print(f"[detect] {debug_message}")
+
+    if boxes_tensor is None or scores_tensor is None:
+        boxes_tensor, scores_tensor, fallback_debug_message = (
+            find_head_tensor_and_create_slices(graph)
+        )
+        print(f"[fallback] {fallback_debug_message}")
+
+    insert_efficient_nms_and_prune(
+        graph=graph,
+        boxes_tensor=boxes_tensor,
+        scores_tensor=scores_tensor,
+        max_detections=args.keep_topk,
+        score_threshold=args.score_thresh,
+        iou_threshold=args.iou_thresh,
+        scores_are_probabilities=not args.scores_are_logits,
+        boxes_are_xyxy=not args.boxes_are_xywh,
     )
 
-    g.cleanup().toposort()
-    print(f"[save] {args.out_onnx}")
-    onnx.save(gs.export_onnx(g), args.out_onnx)
-    print("✅ Done")
+    graph.cleanup().toposort()
+    print(f"[save] {args.output_onnx}")
+    onnx.save(gs.export_onnx(graph), args.output_onnx)
+    print("Done")
 
 
 if __name__ == "__main__":

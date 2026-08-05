@@ -261,7 +261,7 @@ class TritonClient:
             (i["name"], [int(s) for s in i["shape"]], i["datatype"])
             for i in self.metadata["inputs"]
         ]
-        # Update output names for new NMS format
+
         self.output_names: List[str] = (
             [o["name"] for o in self.metadata["outputs"]]
             if requested_outputs is None

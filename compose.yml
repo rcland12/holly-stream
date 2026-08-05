@@ -28,6 +28,11 @@ services:
       - /tmp/argus_socket:/tmp/argus_socket
       - ./triton:/root/app/triton
     env_file: .env
+    cpus: "2.0"
+    cpu_shares: 256
+    mem_limit: 1g
+    pids_limit: 200
+    restart: unless-stopped
 
   triton:
     container_name: holly-stream-triton
@@ -41,7 +46,7 @@ services:
       - 8001:8001
     shm_size: 512mb
     volumes:
-      - ./triton:/models
+      - ./triton/repository:/models
     env_file: .env
     deploy:
       resources:
@@ -72,7 +77,7 @@ services:
     networks:
       - backend
     ports:
-      - ${STREAM_PORT}:${STREAM_PORT}
+      - 1936:1936
     healthcheck:
       test: ["CMD-SHELL", "nginx -t && kill -0 $(cat /tmp/nginx.pid)"]
       interval: 10s
