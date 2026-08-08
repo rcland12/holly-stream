@@ -470,6 +470,9 @@ def main(
     camera_width: int,
     camera_height: int,
     camera_fps: int,
+    camera_rotation: int,
+    camera_hflip: bool,
+    camera_vflip: bool,
     santa_hat_plugin: bool,
 ) -> None:
     """
@@ -485,6 +488,9 @@ def main(
         camera_width (int): The width of the camera frame.
         camera_height (int): The height of the camera frame.
         camera_fps (int): The frames-per-second to use on camera.
+        camera_rotation (int): Image rotation, 0 or 180 (180 == hflip + vflip).
+        camera_hflip (bool): Toggles a horizontal flip on top of the rotation.
+        camera_vflip (bool): Toggles a vertical flip on top of the rotation.
         santa_hat_plugin (bool): Indicates whether to use the Santa hat plugin.
 
     Returns:
@@ -524,11 +530,23 @@ def main(
         model.classes, camera_width, camera_height, santa_hat_plugin
     )
 
+    # Same orientation rules as stream.sh: a 180 rotation is hflip + vflip, and
+    # CAMERA_HFLIP/CAMERA_VFLIP toggle those flips so every orientation is
+    # reachable. 90/270 would need a real rotate the ISP cannot do.
+    if camera_rotation not in (0, 180):
+        print(
+            f"[WARN] CAMERA_ROTATION={camera_rotation} is not supported (expected 0 or 180); treating as 0."
+        )
+        camera_rotation = 0
+    hflip = (1 if camera_rotation == 180 else 0) ^ int(camera_hflip)
+    vflip = (1 if camera_rotation == 180 else 0) ^ int(camera_vflip)
+    print(f"[INFO] Orientation: hflip={hflip} vflip={vflip}")
+
     camera = Picamera2()
     camera.configure(
         camera.create_video_configuration(
             main={"size": (camera_width, camera_height), "format": "BGR888"},
-            transform=Transform(hflip=1, vflip=1),
+            transform=Transform(hflip=hflip, vflip=vflip),
         )
     )
     camera.controls.Brightness = 0.2
@@ -572,6 +590,9 @@ if __name__ == "__main__":
     parser.add_arg("CAMERA_WIDTH", default=640, d_type=int)
     parser.add_arg("CAMERA_HEIGHT", default=480, d_type=int)
     parser.add_arg("CAMERA_FPS", default=30, d_type=int)
+    parser.add_arg("CAMERA_ROTATION", default=180, d_type=int)
+    parser.add_arg("CAMERA_HFLIP", default=False, d_type=bool)
+    parser.add_arg("CAMERA_VFLIP", default=False, d_type=bool)
     parser.add_arg("SANTA_HAT_PLUGIN", default=False, d_type=bool)
     args = parser.parse_args()
 
@@ -585,5 +606,8 @@ if __name__ == "__main__":
         camera_width=args.CAMERA_WIDTH,
         camera_height=args.CAMERA_HEIGHT,
         camera_fps=args.CAMERA_FPS,
+        camera_rotation=args.CAMERA_ROTATION,
+        camera_hflip=args.CAMERA_HFLIP,
+        camera_vflip=args.CAMERA_VFLIP,
         santa_hat_plugin=args.SANTA_HAT_PLUGIN,
     )

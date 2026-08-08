@@ -9,6 +9,10 @@ data/
 .process.pid
 .log.out
 .stream_env
+deepstream/
+old_triton/
+triton/new_models/
+triton/repository/
 
 ### Linux ###
 *~

@@ -81,7 +81,15 @@
 #   VIDEO_BITRATE     force bitrate, e.g. 6000k (skips auto-calc)
 #   GOP_SECONDS       keyframe interval in seconds (default 2; alias KEYINT_SECONDS)
 #   CAMERA_FPS        overrides the preset framerate when set
-#   CAMERA_ROTATION   0 or 180 (default 180)
+#   CAMERA_ROTATION   0 or 180 (default 180). 180 == hflip + vflip, applied by
+#                     the camera/ISP on the libcamera and legacy paths and by an
+#                     ffmpeg filter on the USB path.
+#   CAMERA_HFLIP      True | False  (default False) mirror left<->right
+#   CAMERA_VFLIP      True | False  (default False) mirror top<->bottom
+#                     Both TOGGLE on top of CAMERA_ROTATION, so e.g.
+#                     ROTATION=180 + VFLIP=True == mirrored, right side up.
+#                     If the picture is upside down with ROTATION=180, set
+#                     CAMERA_ROTATION=0; if it is upside down with 0, use 180.
 #   CAMERA_BACKEND    auto | libcamera | legacy | usb   (default auto)
 #   CAPTURE_MODE      auto | off        (default auto)
 #   USE_ENCODER       cpu | v4l2m2m     (USB path only; default cpu)
@@ -120,7 +128,49 @@ STREAM_APPLICATION="${STREAM_APPLICATION:-live}"
 STREAM_KEY="${STREAM_KEY:-stream}"
 CAMERA_INDEX="${CAMERA_INDEX:-0}"
 CAMERA_ROTATION="${CAMERA_ROTATION:-180}"
+CAMERA_HFLIP="${CAMERA_HFLIP:-False}"
+CAMERA_VFLIP="${CAMERA_VFLIP:-False}"
 AUDIO_DEVICE="${AUDIO_DEVICE:-}"
+
+# ---------------------------------------------------------------------------
+# ORIENTATION. Everything is expressed as an hflip/vflip pair because that is
+# the only transform the Pi ISP (and the USB re-encode path) can do for free:
+# a 180 rotation IS hflip+vflip. 90/270 would need a real rotate, which the HW
+# encoder cannot do, so those are rejected rather than silently ignored.
+#
+# CAMERA_HFLIP/CAMERA_VFLIP TOGGLE the rotation's flips, which makes every
+# orientation reachable from the four combinations.
+# ---------------------------------------------------------------------------
+case "$CAMERA_ROTATION" in
+  0|"")   ROT_H=0; ROT_V=0 ;;
+  180)    ROT_H=1; ROT_V=1 ;;
+  90|270)
+    log_warn "CAMERA_ROTATION=${CAMERA_ROTATION} is not supported (the Pi ISP/HW encoder only does 0/180); treating as 0."
+    log_warn "Use CAMERA_HFLIP/CAMERA_VFLIP for mirroring."
+    ROT_H=0; ROT_V=0 ;;
+  *)
+    log_warn "Unknown CAMERA_ROTATION '${CAMERA_ROTATION}', expected 0 or 180; treating as 0."
+    ROT_H=0; ROT_V=0 ;;
+esac
+[ "$CAMERA_HFLIP" = "True" ] && ROT_H=$(( 1 - ROT_H ))
+[ "$CAMERA_VFLIP" = "True" ] && ROT_V=$(( 1 - ROT_V ))
+
+# Per-backend spellings of the same transform.
+RPICAM_FLIP=""                 # rpicam-vid (libcamera)
+RASPIVID_FLIP=""               # raspivid (legacy)
+FFMPEG_FLIP=""                 # ffmpeg filter fragment (USB), trailing comma
+[ "$ROT_H" -eq 1 ] && { RPICAM_FLIP="$RPICAM_FLIP --hflip"; RASPIVID_FLIP="$RASPIVID_FLIP --hflip"; FFMPEG_FLIP="${FFMPEG_FLIP}hflip,"; }
+[ "$ROT_V" -eq 1 ] && { RPICAM_FLIP="$RPICAM_FLIP --vflip"; RASPIVID_FLIP="$RASPIVID_FLIP --vflip"; FFMPEG_FLIP="${FFMPEG_FLIP}vflip,"; }
+
+if [ "$ROT_H" -eq 1 ] && [ "$ROT_V" -eq 1 ]; then
+  ORIENT_DESC="180 (hflip+vflip)"
+elif [ "$ROT_H" -eq 1 ]; then
+  ORIENT_DESC="mirrored horizontally"
+elif [ "$ROT_V" -eq 1 ]; then
+  ORIENT_DESC="mirrored vertically"
+else
+  ORIENT_DESC="none (as the sensor sees it)"
+fi
 
 # ----- Image tuning (libcamera/rpicam-vid). Empty = camera auto. -----
 # To BRIGHTEN a dark image, prefer CAMERA_EV (exposure compensation in stops,
@@ -446,7 +496,7 @@ echo -e "${BLUE}  Output:${NC} ${OUT_W}x${OUT_H} @ ${OUT_FPS}fps"
 echo -e "${BLUE}  Capture (libcamera):${NC} ${CAPTURE_DESC}"
 echo -e "${BLUE}  Quality:${NC} ${STREAM_QUALITY} -> ${VIDEO_BITRATE} (max ${MAX_BITRATE}, buf ${BUFFER_SIZE})"
 echo -e "${BLUE}  Keyframe interval:${NC} ${GOP_SIZE} frames (${GOP_SECONDS}s)"
-echo -e "${BLUE}  Rotation:${NC} ${CAMERA_ROTATION}"
+echo -e "${BLUE}  Orientation:${NC} ${ORIENT_DESC}  [CAMERA_ROTATION=${CAMERA_ROTATION} CAMERA_HFLIP=${CAMERA_HFLIP} CAMERA_VFLIP=${CAMERA_VFLIP}]"
 echo -e "${BLUE}  Audio:${NC} ${AUDIO_ENABLED} (device='${AUDIO_DEVICE}')"
 echo -e "${BLUE}  Backend/Encoder:${NC} ${CAMERA_BACKEND} / ${USE_ENCODER}"
 echo -e "${BLUE}  Target:${NC} rtmp://${STREAM_IP}:${STREAM_PORT}/${STREAM_APPLICATION}/${STREAM_KEY}"
@@ -576,7 +626,7 @@ run_once() {
         -f v4l2 -thread_queue_size 4096 -framerate "$OUT_FPS" -video_size "$DIMS" -input_format mjpeg \
         -i "/dev/video${CAMERA_INDEX}" \
         ${AUDIO_INPUT} \
-        -vf "format=yuv420p" \
+        -vf "${FFMPEG_FLIP}format=yuv420p" \
         ${ENCODING_PARAMS} \
         ${MUX_TAIL_AUDIO} \
         ${COMMON_TAIL}
@@ -585,7 +635,7 @@ run_once() {
       eval ffmpeg \
         -f v4l2 -thread_queue_size 4096 -framerate "$OUT_FPS" -video_size "$DIMS" -input_format mjpeg \
         -i "/dev/video${CAMERA_INDEX}" \
-        -vf "format=yuv420p" \
+        -vf "${FFMPEG_FLIP}format=yuv420p" \
         ${ENCODING_PARAMS} \
         ${MUX_TAIL_NOAUDIO} \
         ${COMMON_TAIL}
@@ -601,7 +651,7 @@ run_once() {
         --nopreview --inline --timeout 0 \
         ${LIBCAMERA_MODE_ARG} \
         --width "$OUT_W" --height "$OUT_H" \
-        --framerate "$OUT_FPS" --rotation "$CAMERA_ROTATION" \
+        --framerate "$OUT_FPS" ${RPICAM_FLIP} \
         --codec h264 --profile "${V4L2M2M_PROFILE}" --level "${V4L2M2M_LEVEL}" \
         --intra "${GOP_SIZE}" \
         ${LIBCAMERA_TUNING} \
@@ -618,7 +668,7 @@ run_once() {
         --nopreview --inline --timeout 0 \
         ${LIBCAMERA_MODE_ARG} \
         --width "$OUT_W" --height "$OUT_H" \
-        --framerate "$OUT_FPS" --rotation "$CAMERA_ROTATION" \
+        --framerate "$OUT_FPS" ${RPICAM_FLIP} \
         --codec h264 --profile "${V4L2M2M_PROFILE}" --level "${V4L2M2M_LEVEL}" \
         --intra "${GOP_SIZE}" \
         ${LIBCAMERA_TUNING} \
@@ -638,7 +688,7 @@ run_once() {
       log_info "Starting raspivid stream with audio (HW encode, copy video)..."
       eval raspivid --nopreview --timeout 0 \
         --width "$OUT_W" --height "$OUT_H" \
-        --framerate "$OUT_FPS" --rotation "$CAMERA_ROTATION" \
+        --framerate "$OUT_FPS" ${RASPIVID_FLIP} \
         --bitrate "${RPICAM_BPS}" --profile high --inline --intra "${GOP_SIZE}" -o - \| \
       ffmpeg -thread_queue_size 2048 -f h264 -r "$OUT_FPS" -probesize 50M -analyzeduration 2M -i - \
         ${AUDIO_INPUT} \
@@ -650,7 +700,7 @@ run_once() {
       log_info "Starting raspivid stream without audio (HW encode, copy video)..."
       eval raspivid --nopreview --timeout 0 \
         --width "$OUT_W" --height "$OUT_H" \
-        --framerate "$OUT_FPS" --rotation "$CAMERA_ROTATION" \
+        --framerate "$OUT_FPS" ${RASPIVID_FLIP} \
         --bitrate "${RPICAM_BPS}" --profile high --inline --intra "${GOP_SIZE}" -o - \| \
       ffmpeg -thread_queue_size 2048 -f h264 -r "$OUT_FPS" -probesize 50M -analyzeduration 2M -i - \
         -c:v copy \
