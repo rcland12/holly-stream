@@ -4,7 +4,11 @@ services:
   app:
     container_name: holly-stream-app
     image: rcland12/detection-stream:raspbian-latest
-    build: ./app
+    build:
+      context: ./app
+      args:
+        LIBCAMERA_REF: "6c1dd9d55573010f710c9e190a73e7e76f0d9432"
+        RPICAM_APPS_REF: "6ddd6ba738df3f2c97065899ed41fe6177b634c8"
     restart: unless-stopped
     network_mode: host
     environment:
