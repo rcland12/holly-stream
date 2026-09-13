@@ -26,9 +26,6 @@ services:
     build:
       context: ./triton
     network_mode: "host"
-    ports:
-      - 8000:8000
-      - 8001:8001
     shm_size: 256mb
     volumes:
       - ./triton/repository:/models
