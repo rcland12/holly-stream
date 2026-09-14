@@ -12,6 +12,8 @@ data/
 deepstream/
 old_triton/
 triton/new_models/
+triton/*.pt
+triton/results.png
 
 ### Linux ###
 *~
