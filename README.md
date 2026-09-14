@@ -352,7 +352,7 @@ Stream to VLC, Windows Media Player, or other RTMP-compatible software on the sa
 **Step 1: Start Nginx Server**
 
 ```bash
-docker compose up -d nginx-stream
+docker compose up -d nginx
 ```
 
 **Step 2: Configure Environment**
@@ -401,7 +401,7 @@ Stream to web browsers using HLS protocol.
 **Step 1: Start Nginx Web Server**
 
 ```bash
-docker compose up -d nginx-web
+docker compose up -d nginx
 ```
 
 **Step 2: Configure Environment**
@@ -409,7 +409,7 @@ docker compose up -d nginx-web
 Update `.env`:
 ```bash
 OBJECT_DETECTION=True
-STREAM_IP=127.0.0.1  # or LAN IP of device running nginx-web
+STREAM_IP=127.0.0.1  # or LAN IP of device running nginx
 STREAM_PORT=1935
 STREAM_APPLICATION=live
 STREAM_KEY=stream
@@ -426,12 +426,12 @@ On the Raspberry Pi:
 
 Open browser and navigate to:
 ```
-http://localhost:8080/index.html
+http://localhost:8080/?key=stream
 ```
 
 Or from another device on your network:
 ```
-http://<PI_IP_ADDRESS>:8080/index.html
+http://<PI_IP_ADDRESS>:8080/?key=stream
 ```
 
 **Step 5: Stop Services**
@@ -465,7 +465,7 @@ cd holly-stream
 
 **Step 2: Configure Nginx for Remote Access**
 
-Edit `nginx/nginx-web/nginx.conf`:
+Edit `nginx/nginx.conf`:
 
 **Line 27** - Add your domain:
 ```nginx
@@ -509,7 +509,7 @@ src: 'https://your-domain.com/hls/mySecureKey123.m3u8'
 **Step 3: Start Nginx on Web Server**
 
 ```bash
-docker compose up -d nginx-web
+docker compose up -d nginx
 ```
 
 **Step 4: Configure Raspberry Pi Environment**
@@ -919,7 +919,7 @@ docker exec holly-stream-nginx ls -la /var/www/html/stream/hls/
 ```
 
 **Solution:**
-- Verify nginx-web container is running
+- Verify the nginx container is running
 - Check browser console for JavaScript errors
 - Ensure `STREAM_KEY` matches filename in HLS directory
 - Clear browser cache
