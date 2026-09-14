@@ -120,8 +120,12 @@ class TritonClient:
         pad_left = (model_w - int(round(orig_w * scale))) // 2
 
         rescaled = boxes.astype(np.float32)
-        rescaled[:, [0, 2]] = ((rescaled[:, [0, 2]] - pad_left) / scale).clip(0, orig_w)
-        rescaled[:, [1, 3]] = ((rescaled[:, [1, 3]] - pad_top) / scale).clip(0, orig_h)
+        rescaled[:, [0, 2]] = ((rescaled[:, [0, 2]] - pad_left) / scale).clip(
+            0, orig_w
+        )
+        rescaled[:, [1, 3]] = ((rescaled[:, [1, 3]] - pad_top) / scale).clip(
+            0, orig_h
+        )
 
         return rescaled
 
@@ -147,7 +151,9 @@ class TritonClient:
             (height, width) of the model input.
         """
         try:
-            first_step = self.config["ensemble_scheduling"]["step"][0]["model_name"]
+            first_step = self.config["ensemble_scheduling"]["step"][0][
+                "model_name"
+            ]
             dims = self._get_model_config(first_step)["output"][0]["dims"]
             return int(dims[2]), int(dims[3])
         except Exception:
@@ -161,7 +167,11 @@ class TritonClient:
             A list of class labels if found; otherwise, None.
         """
         label_filename = next(
-            (o["label_filename"] for o in self.config["output"] if o.get("label_filename")),
+            (
+                o["label_filename"]
+                for o in self.config["output"]
+                if o.get("label_filename")
+            ),
             None,
         )
         if label_filename is None:
@@ -245,10 +255,14 @@ def draw_bounding_boxes(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run one image through the Triton yolo11 ensemble.")
-    parser.add_argument("--url", default="http://rustypi6.home.arpa:8000")
+    parser = argparse.ArgumentParser(
+        description="Run one image through the Triton yolo11 ensemble."
+    )
+    parser.add_argument("--url", default="grpc://rustypi6.home.arpa:8001")
     parser.add_argument("--model", default="yolo11")
-    parser.add_argument("--image", required=True, help="Path to an image of any size")
+    parser.add_argument(
+        "--image", required=True, help="Path to an image of any size"
+    )
     parser.add_argument("--output", default="results.png")
     args = parser.parse_args()
 
@@ -257,4 +271,6 @@ if __name__ == "__main__":
     client = TritonClient(url=args.url, model=args.model)
     bboxes, confs, indexes = client(image)
 
-    draw_bounding_boxes(image, bboxes, confs, indexes, client.classes, args.output)
+    draw_bounding_boxes(
+        image, bboxes, confs, indexes, client.classes, args.output
+    )

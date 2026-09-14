@@ -1,5 +1,9 @@
 import os
+import re
+import signal
 import subprocess
+import threading
+import time
 from ast import literal_eval
 from typing import Any, Dict, List, Optional, Tuple, Type
 from urllib.parse import urlparse
@@ -8,8 +12,6 @@ import cv2
 import imutils
 import numpy as np
 from dotenv import load_dotenv
-from libcamera import Transform
-from picamera2 import Picamera2
 
 
 class EnvArgumentParser:
@@ -365,7 +367,10 @@ class Annotator:
         self.width = width
         self.height = height
         self.classes = classes
-        self.colors = list(np.random.rand(len(self.classes), 3) * 255)
+        self.colors = [
+            tuple(float(c) for c in color)
+            for color in np.random.rand(len(self.classes), 3) * 255
+        ]
         self.santa_hat = cv2.imread("images/santa_hat.png")
         self.santa_hat_mask = cv2.imread("images/santa_hat_mask.png")
         self.santa_hat_plugin = santa_hat_plugin
@@ -490,6 +495,163 @@ class Annotator:
         return frame
 
 
+class DetectionWorker(threading.Thread):
+    """
+    Runs inference in the background on the most recent frame, so the stream never waits on Triton.
+
+    The capture loop hands over a frame whenever the worker asks for one, and reads back the
+    latest detections to draw. If Triton is unavailable the worker keeps retrying and the
+    stream continues without boxes.
+
+    Args:
+        triton_url (str): The URL of the Triton Inference Server.
+        model_name (str): The name of the model to be used for inference.
+        width (int): The width of the frame.
+        height (int): The height of the frame.
+        santa_hat_plugin (bool): Indicates whether to use the Santa hat plugin.
+        confidence_threshold (float): Minimum score to draw.
+        classes (List[int]): Class indexes to keep. An empty list keeps all classes.
+    """
+
+    # Boxes older than this are dropped, so a stalled Triton doesn't leave stale boxes on screen.
+    # A single inference takes ~0.7-2.2s on a Pi 4 while it is also streaming, so keep this well above that.
+    max_detection_age = 10.0
+
+    def __init__(
+        self,
+        triton_url: str,
+        model_name: str,
+        width: int,
+        height: int,
+        santa_hat_plugin: bool,
+        confidence_threshold: float,
+        classes: List[int],
+    ):
+        super().__init__(daemon=True)
+        self.triton_url = triton_url
+        self.model_name = model_name
+        self.width = width
+        self.height = height
+        self.santa_hat_plugin = santa_hat_plugin
+        self.confidence_threshold = confidence_threshold
+        self.classes = classes
+
+        self.annotator: Optional[Annotator] = None
+        self.frame_wanted = threading.Event()
+        self.frame_ready = threading.Event()
+        self._frame: Optional[np.ndarray] = None
+        self._lock = threading.Lock()
+        self._detections: Tuple[List[List[float]], List[float], List[int]] = ([], [], [])
+        self._detections_time = 0.0
+
+    def submit(self, yuv_frame: bytearray) -> None:
+        """
+        Copy a frame for the worker if it is waiting for one. Called from the capture loop.
+
+        Args:
+            yuv_frame (bytearray): The current I420 frame.
+        """
+        if self.frame_wanted.is_set():
+            self.frame_wanted.clear()
+            self._frame = np.frombuffer(yuv_frame, dtype=np.uint8).copy()
+            self.frame_ready.set()
+
+    def detections(self) -> Tuple[List[List[float]], List[float], List[int]]:
+        """
+        Get the most recent detections, or empty lists if they are stale.
+
+        Returns:
+            Tuple of bounding boxes, confidence scores and class indexes.
+        """
+        with self._lock:
+            if time.monotonic() - self._detections_time > self.max_detection_age:
+                return [], [], []
+            return self._detections
+
+    def run(self) -> None:
+        model = None
+        while True:
+            try:
+                if model is None:
+                    model = TritonClient(self.triton_url, self.model_name)
+                    self.annotator = Annotator(
+                        model.classes, self.width, self.height, self.santa_hat_plugin
+                    )
+                    print(f"[INFO] Connected to Triton model '{self.model_name}' at {self.triton_url}", flush=True)
+
+                self.frame_ready.clear()
+                self.frame_wanted.set()
+                self.frame_ready.wait()
+
+                yuv = self._frame.reshape(self.height * 3 // 2, self.width)
+                rgb = cv2.cvtColor(yuv, cv2.COLOR_YUV2RGB_I420)
+                bboxes, confs, indexes = model(rgb)
+
+                keep = [
+                    i
+                    for i, (conf, index) in enumerate(zip(confs, indexes))
+                    if conf >= self.confidence_threshold
+                    and (not self.classes or index in self.classes)
+                ]
+                with self._lock:
+                    self._detections = (
+                        [bboxes[i] for i in keep],
+                        [confs[i] for i in keep],
+                        [indexes[i] for i in keep],
+                    )
+                    self._detections_time = time.monotonic()
+
+            except Exception as e:
+                print(f"[WARN] Object detection unavailable, retrying in 5s: {e}", flush=True)
+                with self._lock:
+                    self._detections = ([], [], [])
+                model = None
+                time.sleep(5)
+
+
+def read_exactly(pipe: Any, buffer: bytearray) -> bool:
+    """
+    Fill the buffer from a pipe.
+
+    Args:
+        pipe: A binary file object, e.g. a subprocess stdout.
+        buffer (bytearray): The buffer to fill.
+
+    Returns:
+        bool: False if the pipe closed before the buffer was filled.
+    """
+    view = memoryview(buffer)
+    received = 0
+    while received < len(buffer):
+        n = pipe.readinto(view[received:])
+        if not n:
+            return False
+        received += n
+    return True
+
+
+def detect_audio_device(audio_device: str) -> str:
+    """
+    Resolve the ALSA capture device, falling back to the first card `arecord -l` reports.
+
+    Args:
+        audio_device (str): Configured device such as "plughw:1,0", or "" to auto-detect.
+
+    Returns:
+        str: The ALSA device to use, or "" if none was found.
+    """
+    if audio_device:
+        return audio_device
+    try:
+        listing = subprocess.run(
+            ["arecord", "-l"], capture_output=True, text=True, timeout=5
+        ).stdout
+        match = re.search(r"card (\d+):", listing)
+        return f"plughw:{match.group(1)},0" if match else ""
+    except Exception:
+        return ""
+
+
 def main(
     triton_url: str,
     model_name: str,
@@ -503,12 +665,22 @@ def main(
     camera_rotation: int,
     camera_hflip: bool,
     camera_vflip: bool,
+    camera_tuning: Dict[str, str],
+    capture_mode: str,
+    audio_enabled: bool,
+    audio_device: str,
+    stream_quality: str,
+    keyint_seconds: int,
     santa_hat_plugin: bool,
     confidence_threshold: float,
     classes: List[int],
 ) -> None:
     """
     Main function to run the RTMP stream, object detection and annotation pipeline.
+
+    rpicam-vid captures raw I420 frames, boxes are drawn on them in Python, and ffmpeg encodes
+    with the Pi's hardware H.264 encoder and muxes ALSA audio into the RTMP stream. Inference
+    runs in a background thread on the most recent frame.
 
     Args:
         triton_url (str): The URL of the Triton server.
@@ -523,6 +695,12 @@ def main(
         camera_rotation (int): Image rotation, 0 or 180 (180 == hflip + vflip).
         camera_hflip (bool): Toggles a horizontal flip on top of the rotation.
         camera_vflip (bool): Toggles a vertical flip on top of the rotation.
+        camera_tuning (Dict[str, str]): rpicam-vid image tuning flags, e.g. {"ev": "0.5"}.
+        capture_mode (str): Sensor mode as "W:H", or "" to let libcamera choose.
+        audio_enabled (bool): Mux audio from an ALSA device into the stream.
+        audio_device (str): ALSA device such as "plughw:1,0", or "" to auto-detect.
+        stream_quality (str): Bitrate preset, same names as stream.sh.
+        keyint_seconds (int): Keyframe interval in seconds.
         santa_hat_plugin (bool): Indicates whether to use the Santa hat plugin.
         confidence_threshold (float): Minimum score to draw. The model already drops scores below 0.25.
         classes (List[int]): Class indexes to keep when drawing detections. An empty list keeps all classes.
@@ -530,38 +708,11 @@ def main(
     Returns:
         None
     """
+    if camera_width % 2 or camera_height % 2:
+        raise ValueError("CAMERA_WIDTH and CAMERA_HEIGHT must be even for I420 frames.")
+
     rtmp_url = "rtmp://{}:{}/{}/{}".format(
         stream_ip, stream_port, stream_application, stream_key
-    )
-
-    command = [
-        "ffmpeg",
-        "-y",
-        "-f",
-        "rawvideo",
-        "-vcodec",
-        "rawvideo",
-        "-pix_fmt",
-        "rgb24",
-        "-s",
-        "{}x{}".format(camera_width, camera_height),
-        "-r",
-        str(camera_fps),
-        "-i",
-        "-",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-f",
-        "flv",
-        rtmp_url,
-    ]
-
-    model = TritonClient(triton_url, model_name)
-
-    annotator = Annotator(
-        model.classes, camera_width, camera_height, santa_hat_plugin
     )
 
     # Same orientation rules as stream.sh: a 180 rotation is hflip + vflip, and
@@ -576,53 +727,136 @@ def main(
     vflip = (1 if camera_rotation == 180 else 0) ^ int(camera_vflip)
     print(f"[INFO] Orientation: hflip={hflip} vflip={vflip}")
 
-    camera = Picamera2()
-    camera.configure(
-        camera.create_video_configuration(
-            main={"size": (camera_width, camera_height), "format": "BGR888"},
-            transform=Transform(hflip=hflip, vflip=vflip),
-        )
-    )
-    camera.controls.Brightness = 0.2
+    camera_command = [
+        "rpicam-vid",
+        "--nopreview",
+        "--timeout", "0",
+        "--width", str(camera_width),
+        "--height", str(camera_height),
+        "--framerate", str(camera_fps),
+        "--codec", "yuv420",
+        "-o", "-",
+    ]
+    if capture_mode:
+        camera_command += ["--mode", capture_mode]
+    if hflip:
+        camera_command.append("--hflip")
+    if vflip:
+        camera_command.append("--vflip")
+    for flag, value in camera_tuning.items():
+        camera_command += [f"--{flag}", value]
 
-    period = 10
-    tracking_index = 0
-    process = subprocess.Popen(command, stdin=subprocess.PIPE)
+    # Bits-per-pixel presets and the 800k-10M clamp match stream.sh
+    bpp = {"ultra": 15, "high": 12, "smooth": 10, "balanced": 8, "medium": 8, "fast": 6, "low": 6}
+    bitrate_kbps = camera_width * camera_height * camera_fps * bpp.get(stream_quality, 12) // 100_000
+    bitrate_kbps = max(800, min(bitrate_kbps, 10_000))
+
+    audio_device = detect_audio_device(audio_device) if audio_enabled else ""
+    if audio_enabled and not audio_device:
+        print("[WARN] No usable audio input found; streaming without audio.")
+
+    ffmpeg_command = [
+        "ffmpeg", "-hide_banner", "-loglevel", "warning", "-y",
+        "-f", "rawvideo",
+        "-pix_fmt", "yuv420p",
+        "-s", f"{camera_width}x{camera_height}",
+        "-framerate", str(camera_fps),
+        "-use_wallclock_as_timestamps", "1",
+        "-thread_queue_size", "512",
+        "-i", "-",
+    ]
+    if audio_device:
+        ffmpeg_command += [
+            "-f", "alsa",
+            "-thread_queue_size", "8192",
+            "-ar", "48000",
+            "-ac", "2",
+            "-i", audio_device,
+        ]
+    ffmpeg_command += [
+        "-c:v", "h264_v4l2m2m",
+        "-num_capture_buffers", "16",
+        # The V4L2 encoder only emits SPS/PPS in-band. Without this the FLV muxer writes Annex B
+        # packets and nginx-rtmp's HLS module drops the publisher ("hls: failed to read N byte(s)").
+        "-bsf:v", "extract_extradata",
+        "-b:v", f"{bitrate_kbps}k",
+        "-g", str(camera_fps * keyint_seconds),
+        "-pix_fmt", "yuv420p",
+        "-fps_mode", "cfr",
+        "-r", str(camera_fps),
+    ]
+    if audio_device:
+        ffmpeg_command += [
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-af", "aresample=async=1:min_hard_comp=0.100000:first_pts=0",
+        ]
+    ffmpeg_command += [
+        "-max_muxing_queue_size", "2048",
+        "-flvflags", "no_duration_filesize",
+        "-f", "flv",
+        rtmp_url,
+    ]
+
+    print(
+        f"[INFO] Streaming {camera_width}x{camera_height}@{camera_fps} {bitrate_kbps}k, "
+        f"audio={audio_device or 'off'} -> rtmp://{stream_ip}:{stream_port}/{stream_application}/<key>",
+        flush=True,
+    )
+
+    worker = DetectionWorker(
+        triton_url,
+        model_name,
+        camera_width,
+        camera_height,
+        santa_hat_plugin,
+        confidence_threshold,
+        classes,
+    )
+    worker.start()
+
+    camera = subprocess.Popen(camera_command, stdout=subprocess.PIPE, bufsize=0)
+    encoder = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE)
+
+    frame_size = camera_width * camera_height * 3 // 2
+    frame = bytearray(frame_size)
 
     try:
-        camera.start()
+        while read_exactly(camera.stdout, frame):
+            worker.submit(frame)
 
-        while True:
-            frame = camera.capture_array()[:, :, :3]
+            bboxes, confs, indexes = worker.detections()
+            if bboxes and worker.annotator is not None:
+                yuv = np.frombuffer(frame, dtype=np.uint8).reshape(
+                    camera_height * 3 // 2, camera_width
+                )
+                bgr = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_I420)
+                bgr = worker.annotator(bgr, bboxes, confs, indexes)
+                encoder.stdin.write(cv2.cvtColor(bgr, cv2.COLOR_BGR2YUV_I420).tobytes())
+            else:
+                encoder.stdin.write(frame)
 
-            if tracking_index % period == 0:
-                # The BGR888 format gives RGB-ordered pixels, which is what the model expects
-                bboxes, confs, indexes = model(frame)
-                keep = [
-                    i
-                    for i, (conf, index) in enumerate(zip(confs, indexes))
-                    if conf >= confidence_threshold
-                    and (not classes or index in classes)
-                ]
-                bboxes = [bboxes[i] for i in keep]
-                confs = [confs[i] for i in keep]
-                indexes = [indexes[i] for i in keep]
-                tracking_index = 0
-
-            if bboxes:
-                frame = annotator(frame, bboxes, confs, indexes)
-            tracking_index += 1
-            process.stdin.write(frame.tobytes())
+        raise RuntimeError(f"rpicam-vid exited with code {camera.wait()}")
 
     finally:
-        camera.stop()
-        process.stdin.close()
-        process.wait()
-
-    return
+        camera.terminate()
+        # ffmpeg keeps reading the audio device after stdin closes, so it has to be interrupted
+        try:
+            encoder.stdin.close()
+        except BrokenPipeError:
+            pass
+        encoder.send_signal(signal.SIGINT)
+        for process in (camera, encoder):
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
 
 
 if __name__ == "__main__":
+    # Running as PID 1 in the container, so SIGTERM needs a handler for the cleanup above to run
+    signal.signal(signal.SIGTERM, lambda signum, frame: exit(0))
+
     load_dotenv()
     parser = EnvArgumentParser()
     parser.add_arg("TRITON_URL", default="http://localhost:8000", d_type=str)
@@ -631,15 +865,38 @@ if __name__ == "__main__":
     parser.add_arg("STREAM_PORT", default=1935, d_type=int)
     parser.add_arg("STREAM_APPLICATION", default="live", d_type=str)
     parser.add_arg("STREAM_KEY", default="stream", d_type=str)
-    parser.add_arg("CAMERA_WIDTH", default=640, d_type=int)
-    parser.add_arg("CAMERA_HEIGHT", default=480, d_type=int)
+    parser.add_arg("CAMERA_WIDTH", default=1280, d_type=int)
+    parser.add_arg("CAMERA_HEIGHT", default=960, d_type=int)
     parser.add_arg("CAMERA_FPS", default=30, d_type=int)
     parser.add_arg("CAMERA_ROTATION", default=180, d_type=int)
     parser.add_arg("CAMERA_HFLIP", default=False, d_type=bool)
     parser.add_arg("CAMERA_VFLIP", default=False, d_type=bool)
+    parser.add_arg("CAPTURE_WIDTH", default="", d_type=str)
+    parser.add_arg("CAPTURE_HEIGHT", default="", d_type=str)
+    parser.add_arg("AUDIO_ENABLED", default=False, d_type=bool)
+    parser.add_arg("AUDIO_DEVICE", default="", d_type=str)
+    parser.add_arg("STREAM_QUALITY", default="high", d_type=str)
+    parser.add_arg("KEYINT_SECONDS", default=2, d_type=int)
     parser.add_arg("SANTA_HAT_PLUGIN", default=False, d_type=bool)
     parser.add_arg("CONFIDENCE_THRESHOLD", default=0.25, d_type=float)
     parser.add_arg("CLASSES", default=[], d_type=list)
+
+    # Same optional image tuning variables as stream.sh, passed straight to rpicam-vid
+    tuning_variables = {
+        "CAMERA_EV": "ev",
+        "CAMERA_BRIGHTNESS": "brightness",
+        "CAMERA_GAIN": "gain",
+        "CAMERA_SHUTTER": "shutter",
+        "CAMERA_CONTRAST": "contrast",
+        "CAMERA_SATURATION": "saturation",
+        "CAMERA_SHARPNESS": "sharpness",
+        "CAMERA_AWB": "awb",
+        "CAMERA_DENOISE": "denoise",
+        "CAMERA_METERING": "metering",
+        "CAMERA_EXPOSURE": "exposure",
+    }
+    for variable in tuning_variables:
+        parser.add_arg(variable, default="", d_type=str)
     args = parser.parse_args()
 
     main(
@@ -655,6 +912,20 @@ if __name__ == "__main__":
         camera_rotation=args.CAMERA_ROTATION,
         camera_hflip=args.CAMERA_HFLIP,
         camera_vflip=args.CAMERA_VFLIP,
+        camera_tuning={
+            flag: args[variable]
+            for variable, flag in tuning_variables.items()
+            if args[variable]
+        },
+        capture_mode=(
+            f"{args.CAPTURE_WIDTH}:{args.CAPTURE_HEIGHT}"
+            if args.CAPTURE_WIDTH and args.CAPTURE_HEIGHT
+            else ""
+        ),
+        audio_enabled=args.AUDIO_ENABLED,
+        audio_device=args.AUDIO_DEVICE,
+        stream_quality=args.STREAM_QUALITY,
+        keyint_seconds=args.KEYINT_SECONDS,
         santa_hat_plugin=args.SANTA_HAT_PLUGIN,
         confidence_threshold=args.CONFIDENCE_THRESHOLD,
         classes=args.CLASSES,

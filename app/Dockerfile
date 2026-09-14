@@ -169,6 +169,8 @@ RUN pip3 install --break-system-packages --no-cache-dir --upgrade pip && \
 
 ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib:/usr/lib/aarch64-linux-gnu/blas:/usr/lib/aarch64-linux-gnu/lapack:$LD_LIBRARY_PATH
 ENV PATH=/usr/local/bin:$PATH
+# meson installs the libcamera Python bindings here, which is not on Debian's default sys.path
+ENV PYTHONPATH=/usr/local/lib/python3/dist-packages
 
 COPY main.py stream.sh entrypoint.sh ./
 COPY ./images/ ./images/
