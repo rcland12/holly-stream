@@ -116,7 +116,7 @@ FROM ${BASE_IMAGE}
 WORKDIR /root/app
 
 # python3-numpy, python3-yaml and python3-prctl are deliberately NOT installed
-# here. All three are pulled in by pip (torch, opencv-python, picamera2), and
+# here. All three are pulled in by pip (opencv-python, picamera2), and
 # having an apt copy in /usr/lib alongside a pip copy in /usr/local means two
 # of each on sys.path, with different BLAS linkage in numpy's case. Let pip own
 # them. libcap-dev is here so pip can compile python-prctl, which ships no

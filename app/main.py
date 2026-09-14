@@ -1,13 +1,12 @@
 import os
 import subprocess
 from ast import literal_eval
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type
 from urllib.parse import urlparse
 
 import cv2
 import imutils
 import numpy as np
-import torch
 from dotenv import load_dotenv
 from libcamera import Transform
 from picamera2 import Picamera2
@@ -144,27 +143,20 @@ class TritonClient:
             model (str): The name of the model to be used for inference.
         """
         parsed_url = urlparse(url)
+        self.model_name: str = model
+
         if parsed_url.scheme == "grpc":
             from tritonclient.grpc import InferenceServerClient, InferInput
 
             self.client: InferenceServerClient = InferenceServerClient(
                 parsed_url.netloc
             )
-            self.model_name: str = model
             self.metadata: dict = self.client.get_model_metadata(
                 self.model_name, as_json=True
             )
-            self.config: dict = self.client.get_model_config(
-                self.model_name, as_json=True
-            )["config"]
 
-            def create_input_placeholders() -> List[InferInput]:
-                return [
-                    InferInput(
-                        i["name"], [int(s) for s in i["shape"]], i["datatype"]
-                    )
-                    for i in self.metadata["inputs"]
-                ]
+            def get_model_config(name: str) -> dict:
+                return self.client.get_model_config(name, as_json=True)["config"]
 
         elif parsed_url.scheme == "http":
             from tritonclient.http import InferenceServerClient, InferInput
@@ -172,53 +164,79 @@ class TritonClient:
             self.client: InferenceServerClient = InferenceServerClient(
                 parsed_url.netloc
             )
-            self.model_name: str = model
             self.metadata: dict = self.client.get_model_metadata(
                 self.model_name
             )
-            self.config: dict = self.client.get_model_config(self.model_name)
 
-            def create_input_placeholders() -> List[InferInput]:
-                return [
-                    InferInput(
-                        i["name"], [int(s) for s in i["shape"]], i["datatype"]
-                    )
-                    for i in self.metadata["inputs"]
-                ]
+            def get_model_config(name: str) -> dict:
+                return self.client.get_model_config(name)
 
         else:
             raise RuntimeError("Unsupported protocol. Use HTTP or GRPC.")
 
-        self._create_input_placeholders_fn = create_input_placeholders
+        self._infer_input_cls = InferInput
+        self._get_model_config_fn = get_model_config
+        self.config: dict = get_model_config(self.model_name)
         self.model_dims: Tuple[int, int] = self._get_dims()
         self.classes: Optional[List[str]] = self._get_classes()
 
-    def __call__(self, *args) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
+    def __call__(
+        self, frame: np.ndarray
+    ) -> Tuple[List[List[float]], List[float], List[int]]:
         """
-        Perform inference on the provided inputs.
+        Run inference on an RGB frame and parse the NMS detections.
+
+        Expects the model to produce a single [1, N, 6] output where each row is
+        [x1, y1, x2, y2, score, class] in model input pixels, zero-padded to N rows.
 
         Args:
-            *args: The input arguments for the model.
+            frame (np.ndarray): RGB frame with shape [H, W, 3] and dtype uint8.
 
         Returns:
-            Union[torch.Tensor, Tuple[torch.Tensor, ...]]: The inference results.
-
-        Raises:
-            RuntimeError: If no inputs are provided or if the number of inputs does not match the expected number.
+            Tuple containing:
+                - List[List[float]]: Bounding boxes as [x1, y1, x2, y2] in frame pixels
+                - List[float]: Confidence scores rounded to 2 decimal places
+                - List[int]: Class indexes
         """
-        inputs = self._create_inputs(*args)
+        inputs = self._create_inputs(np.ascontiguousarray(frame))
         response = self.client.infer(model_name=self.model_name, inputs=inputs)
-        result: List[torch.Tensor] = []
-        for output in self.metadata["outputs"]:
-            tensor = torch.tensor(response.as_numpy(output["name"]))
-            result.append(tensor)
 
-        predictions = result[0].tolist()
-        bboxes = [item[:4] for item in predictions]
-        confs = [round(float(item[4]), 2) for item in predictions]
-        indexes = [int(item[5]) for item in predictions]
+        detections = response.as_numpy(self.metadata["outputs"][0]["name"])[0]
+        detections = detections[detections[:, 4] > 0]
+
+        boxes = self._rescale_boxes(detections[:, :4], frame.shape[:2])
+        bboxes = boxes.tolist()
+        confs = [round(float(score), 2) for score in detections[:, 4]]
+        indexes = detections[:, 5].astype(int).tolist()
 
         return bboxes, confs, indexes
+
+    def _rescale_boxes(
+        self, boxes: np.ndarray, original_shape: Tuple[int, int]
+    ) -> np.ndarray:
+        """
+        Rescale boxes from the letterboxed model input back to the original frame.
+
+        Args:
+            boxes (np.ndarray): Array of shape [N, 4] as [x1, y1, x2, y2] in model input pixels.
+            original_shape (Tuple[int, int]): (height, width) of the original frame.
+
+        Returns:
+            np.ndarray: Rescaled boxes clipped to the frame, shape [N, 4].
+        """
+        orig_h, orig_w = original_shape
+        model_h, model_w = self.model_dims
+
+        # Mirrors the letterbox in triton/repository/preprocess/1/model.py
+        scale = min(model_h / orig_h, model_w / orig_w)
+        pad_top = (model_h - int(round(orig_h * scale))) // 2
+        pad_left = (model_w - int(round(orig_w * scale))) // 2
+
+        rescaled = boxes.astype(np.float32)
+        rescaled[:, [0, 2]] = ((rescaled[:, [0, 2]] - pad_left) / scale).clip(0, orig_w)
+        rescaled[:, [1, 3]] = ((rescaled[:, [1, 3]] - pad_top) / scale).clip(0, orig_h)
+
+        return rescaled
 
     def _create_inputs(self, *args):
         """
@@ -237,15 +255,20 @@ class TritonClient:
         if not args_len:
             raise RuntimeError("No inputs provided.")
 
-        placeholders = self._create_input_placeholders_fn()
+        input_specs = self.metadata["inputs"]
+        if args_len != len(input_specs):
+            raise RuntimeError(
+                f"Expected {len(input_specs)} inputs, got {args_len}."
+            )
 
-        if args_len:
-            if args_len != len(placeholders):
-                raise RuntimeError(
-                    f"Expected {len(placeholders)} inputs, got {args_len}."
-                )
-            for input, value in zip(placeholders, args):
-                input.set_data_from_numpy(value)
+        # Use the actual array shape, the ensemble input has variable height/width
+        placeholders = []
+        for spec, value in zip(input_specs, args):
+            placeholder = self._infer_input_cls(
+                spec["name"], list(value.shape), spec["datatype"]
+            )
+            placeholder.set_data_from_numpy(value)
+            placeholders.append(placeholder)
 
         return placeholders
 
@@ -256,37 +279,50 @@ class TritonClient:
         Returns:
             Optional[List[str]]: The list of class labels, or None if not available.
         """
-        label_filename = self.config["output"][0]["label_filename"]
-        docker_file_path = (
-            f"/root/app/triton/{self.model_name}/{label_filename}"
+        label_filename = next(
+            (
+                o["label_filename"]
+                for o in self.config["output"]
+                if o.get("label_filename")
+            ),
+            None,
         )
-        local_file_path = os.path.join(
-            os.path.abspath(os.getcwd()),
-            f"triton/{self.model_name}/{label_filename}",
+        if label_filename is None:
+            return None
+
+        # The model repository is mounted read-only at /root/app/triton/repository in compose.yml
+        candidate_paths = [
+            f"/root/app/triton/repository/{self.model_name}/{label_filename}",
+            os.path.join(
+                os.getcwd(),
+                f"triton/repository/{self.model_name}/{label_filename}",
+            ),
+        ]
+
+        for path in candidate_paths:
+            if os.path.isfile(path):
+                with open(path, "r") as file:
+                    return [
+                        line for line in file.read().splitlines() if line.strip()
+                    ]
+
+        raise FileNotFoundError(
+            f"Could not find label file '{label_filename}' for model '{self.model_name}'. Searched: {candidate_paths}"
         )
-
-        if os.path.isfile(docker_file_path):
-            with open(docker_file_path, "r") as file:
-                classes = file.read().splitlines()
-        elif os.path.isfile(local_file_path):
-            with open(local_file_path, "r") as file:
-                classes = file.read().splitlines()
-        else:
-            classes = None
-
-        return classes
 
     def _get_dims(self) -> Tuple[int, int]:
         """
-        Get the dimensions of the model input.
+        Get the (height, width) the frame is letterboxed to, read from the first
+        ensemble step's output (the preprocess model).
 
         Returns:
             Tuple[int, int]: The dimensions of the model input.
         """
         try:
-            model_dims = tuple(self.config["input"][0]["dims"][2:4])
-            return tuple(map(int, model_dims))
-        except:
+            first_step = self.config["ensemble_scheduling"]["step"][0]["model_name"]
+            config = self._get_model_config_fn(first_step)
+            return tuple(int(d) for d in config["output"][0]["dims"][2:4])
+        except Exception:
             return (640, 640)
 
 
@@ -379,7 +415,6 @@ class Annotator:
             return frame
 
         else:
-            # For santa hat plugin, turn Normalize to True in nms function
             max_index = max(range(len(confs)), key=confs.__getitem__)
             return self._overlay_obj(frame, bboxes[max_index].copy())
 
@@ -394,12 +429,7 @@ class Annotator:
         Returns:
             np.ndarray: The frame with the Santa hat overlaid on the detected object.
         """
-        bbox = [
-            int(i * scalar)
-            for i, scalar in zip(
-                bbox, [self.width, self.height, self.width, self.height]
-            )
-        ]
+        bbox = [int(i) for i in bbox]
         x, y = bbox[0], bbox[1] + 20
 
         resize_width = bbox[2] - bbox[0]
@@ -474,6 +504,8 @@ def main(
     camera_hflip: bool,
     camera_vflip: bool,
     santa_hat_plugin: bool,
+    confidence_threshold: float,
+    classes: List[int],
 ) -> None:
     """
     Main function to run the RTMP stream, object detection and annotation pipeline.
@@ -492,6 +524,8 @@ def main(
         camera_hflip (bool): Toggles a horizontal flip on top of the rotation.
         camera_vflip (bool): Toggles a vertical flip on top of the rotation.
         santa_hat_plugin (bool): Indicates whether to use the Santa hat plugin.
+        confidence_threshold (float): Minimum score to draw. The model already drops scores below 0.25.
+        classes (List[int]): Class indexes to keep when drawing detections. An empty list keeps all classes.
 
     Returns:
         None
@@ -562,7 +596,17 @@ def main(
             frame = camera.capture_array()[:, :, :3]
 
             if tracking_index % period == 0:
+                # The BGR888 format gives RGB-ordered pixels, which is what the model expects
                 bboxes, confs, indexes = model(frame)
+                keep = [
+                    i
+                    for i, (conf, index) in enumerate(zip(confs, indexes))
+                    if conf >= confidence_threshold
+                    and (not classes or index in classes)
+                ]
+                bboxes = [bboxes[i] for i in keep]
+                confs = [confs[i] for i in keep]
+                indexes = [indexes[i] for i in keep]
                 tracking_index = 0
 
             if bboxes:
@@ -582,7 +626,7 @@ if __name__ == "__main__":
     load_dotenv()
     parser = EnvArgumentParser()
     parser.add_arg("TRITON_URL", default="http://localhost:8000", d_type=str)
-    parser.add_arg("MODEL_NAME", default="yolov8n", d_type=str)
+    parser.add_arg("MODEL_NAME", default="yolo11", d_type=str)
     parser.add_arg("STREAM_IP", default="127.0.0.1", d_type=str)
     parser.add_arg("STREAM_PORT", default=1935, d_type=int)
     parser.add_arg("STREAM_APPLICATION", default="live", d_type=str)
@@ -594,6 +638,8 @@ if __name__ == "__main__":
     parser.add_arg("CAMERA_HFLIP", default=False, d_type=bool)
     parser.add_arg("CAMERA_VFLIP", default=False, d_type=bool)
     parser.add_arg("SANTA_HAT_PLUGIN", default=False, d_type=bool)
+    parser.add_arg("CONFIDENCE_THRESHOLD", default=0.25, d_type=float)
+    parser.add_arg("CLASSES", default=[], d_type=list)
     args = parser.parse_args()
 
     main(
@@ -610,4 +656,6 @@ if __name__ == "__main__":
         camera_hflip=args.CAMERA_HFLIP,
         camera_vflip=args.CAMERA_VFLIP,
         santa_hat_plugin=args.SANTA_HAT_PLUGIN,
+        confidence_threshold=args.CONFIDENCE_THRESHOLD,
+        classes=args.CLASSES,
     )

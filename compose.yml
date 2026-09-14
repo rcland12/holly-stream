@@ -45,6 +45,7 @@ services:
       - /run/udev:/run/udev:ro
       - /sys:/sys:ro
       - /dev/shm:/dev/shm
+      - ./triton/repository:/root/app/triton/repository:ro
     security_opt:
       - apparmor:unconfined
       - seccomp:unconfined
@@ -71,7 +72,7 @@ services:
     network_mode: host
     shm_size: 128mb
     volumes:
-      - ./triton/repository:/root/app/triton
+      - ./triton/repository:/models
     env_file: .env
     healthcheck:
       test:

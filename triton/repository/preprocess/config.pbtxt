@@ -4,17 +4,18 @@ max_batch_size: 0
 
 input [
   {
-    name: "INPUT_0"
+    name: "image"
     data_type: TYPE_UINT8
-    dims: [ -1, -1, -1 ]
+    dims: [ -1, -1, 3 ]
   }
 ]
- 
+
+# Must match the object_detection input size. The letterbox size is read from these dims.
 output [
   {
-    name: "OUTPUT_0"
+    name: "resized_image"
     data_type: TYPE_FP32
-    dims: [ -1, -1, -1, -1 ]
+    dims: [ 1, 3, 640, 640 ]
   }
 ]
 
@@ -25,10 +26,6 @@ instance_group [
   }
 ]
 
-version_policy: { 
+version_policy: {
   latest: { num_versions: 1 }
-}
-
-response_cache { 
-  enable: True 
 }
