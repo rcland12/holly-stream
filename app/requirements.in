@@ -1,8 +1,0 @@
-# Direct dependencies. Regenerate the pinned, hashed requirements.txt with:
-#   pip-compile --generate-hashes --strip-extras --output-file=requirements.txt requirements.in
-# Run it with Python 3.11 (the debian:bookworm python) so markers resolve like the image.
-imutils==0.5.4
-opencv-python==4.8.1.78
-picamera2==0.3.12
-python-dotenv==1.0.0
-tritonclient[all]==2.34.0

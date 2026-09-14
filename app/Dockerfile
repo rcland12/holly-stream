@@ -162,11 +162,9 @@ COPY --from=builder /build/rpicam-install/usr/local /usr/local
 # Upgrading pip is the actual fix for the typing-extensions failure: bookworm
 # ships pip 23.0.1, which does not canonicalize wheel metadata names and so
 # rejects typing_extensions>=4.16 and falls back to an sdist it cannot build.
-# Index URLs live in requirements.txt, so they are pinned alongside the versions.
 COPY requirements.txt /tmp/requirements.txt
 RUN pip3 install --break-system-packages --no-cache-dir --upgrade pip && \
-    pip3 install --break-system-packages --no-cache-dir \
-        --require-hashes -r /tmp/requirements.txt && \
+    pip3 install --break-system-packages --no-cache-dir -r /tmp/requirements.txt && \
     rm /tmp/requirements.txt
 
 ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib:/usr/lib/aarch64-linux-gnu/blas:/usr/lib/aarch64-linux-gnu/lapack:$LD_LIBRARY_PATH
