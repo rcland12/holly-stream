@@ -1,0 +1,34 @@
+name: "object_detection"
+platform: "onnxruntime_onnx"
+max_batch_size: 0
+
+# YOLO11n exported with NMS built in:
+#   yolo export model=yolo11n.pt format=onnx imgsz=640 batch=1 dynamic=False simplify=True opset=17 nms=True conf=0.25 iou=0.45
+# output0 rows are [x1, y1, x2, y2, score, class] in model input pixels, zero-padded to 300 rows.
+
+input [
+  {
+    name: "images"
+    data_type: TYPE_FP32
+    dims: [ 1, 3, 640, 640 ]
+  }
+]
+
+output [
+  {
+    name: "output0"
+    data_type: TYPE_FP32
+    dims: [ 1, 300, 6 ]
+  }
+]
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
+
+version_policy: {
+  latest: { num_versions: 1 }
+}

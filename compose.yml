@@ -1,0 +1,107 @@
+name: holly-stream
+
+services:
+  app:
+    container_name: holly-stream-app
+    image: rcland12/detection-stream:raspbian-latest
+    build:
+      context: ./app
+      args:
+        LIBCAMERA_REF: "6c1dd9d55573010f710c9e190a73e7e76f0d9432"
+        RPICAM_APPS_REF: "6ddd6ba738df3f2c97065899ed41fe6177b634c8"
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - LIBCAMERA_LOG_LEVELS=*:WARNING
+      - UDEV=1
+      - PYTHONUNBUFFERED=1
+      - CAMERA_BACKEND=${CAMERA_BACKEND:-libcamera}
+    env_file: .env
+    privileged: true
+    group_add:
+      - audio
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video10:/dev/video10
+      - /dev/video11:/dev/video11
+      - /dev/video12:/dev/video12
+      - /dev/video13:/dev/video13
+      - /dev/video14:/dev/video14
+      - /dev/video15:/dev/video15
+      - /dev/video16:/dev/video16
+      - /dev/media0:/dev/media0
+      - /dev/media1:/dev/media1
+      - /dev/media2:/dev/media2
+      - /dev/media3:/dev/media3
+      - /dev/dma_heap:/dev/dma_heap
+      - /dev/snd:/dev/snd
+      - /dev/vchiq:/dev/vchiq
+      - /dev/vcsm-cma:/dev/vcsm-cma
+      - /dev/dri:/dev/dri
+    volumes:
+      - /dev:/dev
+      - /run/udev:/run/udev:ro
+      - /sys:/sys:ro
+      - /dev/shm:/dev/shm
+      - ./triton/repository:/root/app/triton/repository:ro
+    security_opt:
+      - apparmor:unconfined
+      - seccomp:unconfined
+    cap_add:
+      - SYS_ADMIN
+      - SYS_RAWIO
+      - SYS_NICE
+      - NET_ADMIN
+      - SYS_PTRACE
+    shm_size: 256m
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pgrep -f 'python3|ffmpeg|rpicam|libcamera' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  triton:
+    container_name: holly-stream-triton
+    image: rcland12/detection-stream:raspbian-triton-latest
+    build:
+      context: ./triton
+    network_mode: host
+    shm_size: 128mb
+    volumes:
+      # Read-only so the root-owned Python backend can't leave __pycache__ dirs in the checkout
+      - ./triton/repository:/models:ro
+    env_file: .env
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-i",
+          "-X",
+          "GET",
+          "http://localhost:8000/v2/health/ready",
+        ]
+      interval: 10s
+      timeout: 20s
+      retries: 6
+
+  # One nginx serves both local viewing options, publish to rtmp://<pi>:1935/live/<key>:
+  #   VLC:     rtmp://<pi>:1935/live/<key>
+  #   Browser: http://<pi>:8080/?key=<key>
+  # (Two copies on the host network would conflict on ports 1935 and 8080.)
+  nginx:
+    container_name: holly-stream-nginx
+    image: rcland12/detection-stream:nginx-latest
+    build:
+      context: ./nginx
+    network_mode: host
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t && kill -0 $(cat /tmp/nginx.pid)"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 10s
