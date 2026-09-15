@@ -2,18 +2,12 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,linux
 
 # custom files
-*.m3u8
-stream-*.ts
-*.plan
-data/
-.process.pid
-.log.out
-.stream_env
-deepstream/
-old_triton/
-triton/new_models/
-triton/*.pt
-triton/results.png
+# Models are exported with server/export_model.sh; TensorRT engines are built per GPU at startup
+server/models/*
+!server/models/.gitkeep
+server/data/
+*.pt
+*.engine
 
 ### Linux ###
 *~
