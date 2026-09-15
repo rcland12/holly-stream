@@ -5,8 +5,6 @@ services:
     build:
       context: ./app
     runtime: nvidia
-    # Privileged for the CSI camera (Argus), ALSA and the sysfs performance
-    # knobs set in entrypoint.sh.
     privileged: true
     network_mode: host
     group_add:
@@ -15,11 +13,8 @@ services:
       - /dev/snd:/dev/snd
     volumes:
       - /tmp/argus_socket:/tmp/argus_socket
-      # ONNX models + labels; TensorRT engines are built and cached here.
       - ./models:/models
     env_file: .env
-    # The app exits on stalls/disconnects; Docker brings it back (with backoff)
-    # and also starts it on boot.
     restart: unless-stopped
     logging:
       driver: json-file
@@ -27,9 +22,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # One nginx serves both local viewing options, publish to rtmp://<jetson>:1935/live/<key>:
-  #   VLC:     rtmp://<jetson>:1935/live/<key>
-  #   Browser: http://<jetson>:8080/?key=<key>
   nginx:
     container_name: holly-stream-nginx
     image: rcland12/detection-stream:nginx-latest

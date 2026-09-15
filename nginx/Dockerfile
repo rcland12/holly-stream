@@ -77,8 +77,6 @@ RUN apk add --no-cache \
 COPY --chown=${NGINX_USER}:${NGINX_USER} ./nginx.conf /etc/nginx/nginx.conf
 COPY --chown=${NGINX_USER}:${NGINX_USER} ./stream /var/www/html/stream
 
-# hls.js plays HLS in Chrome/Edge/Firefox (Safari plays it natively). Fetched at build time and
-# checked against the published file so the page works without internet access.
 ARG HLS_JS_VERSION=1.7.3
 ARG HLS_JS_SHA256=a12e7ee1cd64a69dcdb314157e45dafcba705bfb0b1440b7935cb265d374423e
 RUN mkdir -p /var/www/html/stream/vendor && \

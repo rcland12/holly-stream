@@ -14,14 +14,11 @@ WORKDIR /src
 COPY src/ .
 RUN make
 
-# The base image has every runtime plugin used here (nvarguscamerasrc, nvinfer,
-# nvtracker, nvdsosd, nvv4l2h264enc, flvmux, rtmpsink, alsasrc, voaacenc).
 FROM nvcr.io/nvidia/deepstream-l4t:6.0.1-base
 
 COPY --from=build /src/holly-stream /src/libnvdsinfer_custom_impl_yolo.so /opt/holly-stream/
 COPY config/ /opt/holly-stream/config/
 COPY entrypoint.sh collect_data.sh /opt/holly-stream/
 
-# GStreamer log level: 1 = errors only. Set GST_DEBUG=2 in .env to include warnings.
 ENV GST_DEBUG=1
 ENTRYPOINT ["/opt/holly-stream/entrypoint.sh"]
