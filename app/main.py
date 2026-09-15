@@ -200,6 +200,18 @@ class TritonClient:
                 - List[float]: Confidence scores rounded to 2 decimal places
                 - List[int]: Class indexes
         """
+        # Shrink to the letterbox size here rather than in the preprocess model, so a 1280x960 frame
+        # is sent as 640x480 (4x less to serialize and copy) and the preprocess resize becomes a no-op.
+        orig_h, orig_w = frame.shape[:2]
+        model_h, model_w = self.model_dims
+        scale = min(model_h / orig_h, model_w / orig_w)
+        if scale < 1:
+            frame = cv2.resize(
+                frame,
+                (int(round(orig_w * scale)), int(round(orig_h * scale))),
+                interpolation=cv2.INTER_LINEAR,
+            )
+
         inputs = self._create_inputs(np.ascontiguousarray(frame))
         response = self.client.infer(model_name=self.model_name, inputs=inputs)
 
@@ -207,6 +219,8 @@ class TritonClient:
         detections = detections[detections[:, 4] > 0]
 
         boxes = self._rescale_boxes(detections[:, :4], frame.shape[:2])
+        boxes[:, [0, 2]] *= orig_w / frame.shape[1]
+        boxes[:, [1, 3]] *= orig_h / frame.shape[0]
         bboxes = boxes.tolist()
         confs = [round(float(score), 2) for score in detections[:, 4]]
         indexes = detections[:, 5].astype(int).tolist()
@@ -367,61 +381,89 @@ class Annotator:
         self.width = width
         self.height = height
         self.classes = classes
+        bgr_colors = np.random.randint(0, 256, (len(self.classes), 1, 3), dtype=np.uint8)
+        # Each class color as (Y, U, V) using the same conversion as the rest of the I420 pipeline
         self.colors = [
-            tuple(float(c) for c in color)
-            for color in np.random.rand(len(self.classes), 3) * 255
+            self._to_yuv(tuple(int(c) for c in color[0])) for color in bgr_colors
         ]
         self.santa_hat = cv2.imread("images/santa_hat.png")
         self.santa_hat_mask = cv2.imread("images/santa_hat_mask.png")
         self.santa_hat_plugin = santa_hat_plugin
 
+    @staticmethod
+    def _to_yuv(bgr: Tuple[int, int, int]) -> Tuple[int, int, int]:
+        i420 = cv2.cvtColor(np.full((2, 2, 3), bgr, dtype=np.uint8), cv2.COLOR_BGR2YUV_I420)
+        return int(i420[0, 0]), int(i420[2, 0]), int(i420[2, 1])
+
     def __call__(
         self,
-        frame: np.ndarray,
+        frame: bytearray,
         bboxes: List[List[float]],
         confs: List[float],
         indexes: List[int],
-    ) -> np.ndarray:
+    ) -> None:
         """
-        Annotate the frame with bounding boxes, class labels, and confidence scores.
+        Annotate an I420 frame in place with bounding boxes, class labels, and confidence scores.
+
+        Boxes are drawn straight onto the Y, U and V planes. Converting the whole frame to BGR and
+        back costs ~11ms per frame on a Pi 4 and spreads across every core, which starves inference.
 
         Args:
-            frame (np.ndarray): The input frame.
+            frame (bytearray): The I420 frame, modified in place.
             bboxes (List[List[float]]): A list of bounding box coordinates.
             confs (List[float]): A list of confidence scores.
             indexes (List[int]): A list of class indexes.
-
-        Returns:
-            np.ndarray: The annotated frame.
         """
-        if not self.santa_hat_plugin:
-            for i in range(len(bboxes)):
-                xmin, ymin, xmax, ymax = [int(j) for j in bboxes[i]]
-                color = self.colors[indexes[i]]
-                frame = cv2.rectangle(
-                    img=frame,
-                    pt1=(xmin, ymin),
-                    pt2=(xmax, ymax),
-                    color=color,
-                    thickness=2,
-                )
+        buffer = np.frombuffer(frame, dtype=np.uint8)
+        luma_size, chroma_size = self.width * self.height, self.width * self.height // 4
 
-                frame = cv2.putText(
-                    img=frame,
-                    text=f"{self.classes[indexes[i]]} ({str(confs[i])})",
-                    org=(xmin, ymin - 5),
-                    fontFace=cv2.FONT_HERSHEY_PLAIN,
-                    fontScale=0.75,
-                    color=color,
-                    thickness=1,
-                    lineType=cv2.LINE_AA,
-                )
-
-            return frame
-
-        else:
+        if self.santa_hat_plugin:
+            yuv = buffer.reshape(self.height * 3 // 2, self.width)
+            bgr = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_I420)
             max_index = max(range(len(confs)), key=confs.__getitem__)
-            return self._overlay_obj(frame, bboxes[max_index].copy())
+            bgr = self._overlay_obj(bgr, bboxes[max_index].copy())
+            yuv[:] = cv2.cvtColor(bgr, cv2.COLOR_BGR2YUV_I420)
+            return
+
+        planes = (
+            buffer[:luma_size].reshape(self.height, self.width),
+            buffer[luma_size : luma_size + chroma_size].reshape(self.height // 2, self.width // 2),
+            buffer[luma_size + chroma_size :].reshape(self.height // 2, self.width // 2),
+        )
+
+        def fill(pt1: Tuple[int, int], pt2: Tuple[int, int], color: Tuple[int, int, int], thickness: int) -> None:
+            # The chroma planes are half size, so their outline is one pixel thick at half the coordinates
+            for plane, value, shift in zip(planes, color, (0, 1, 1)):
+                cv2.rectangle(
+                    plane,
+                    (pt1[0] >> shift, pt1[1] >> shift),
+                    (pt2[0] >> shift, pt2[1] >> shift),
+                    value,
+                    thickness if thickness < 0 else max(1, thickness >> shift),
+                )
+
+        for i in range(len(bboxes)):
+            xmin, ymin, xmax, ymax = [int(j) for j in bboxes[i]]
+            color = self.colors[indexes[i]]
+            fill((xmin, ymin), (xmax, ymax), color, 2)
+
+            # Colored label tag with light or dark text, since text is only legible in the luma plane
+            text = f"{self.classes[indexes[i]]} ({str(confs[i])})"
+            (text_w, text_h), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_PLAIN, 0.75, 1)
+            tag_top = ymin - text_h - baseline - 4
+            if tag_top < 0:
+                tag_top = ymin
+            fill((xmin, tag_top), (xmin + text_w + 4, tag_top + text_h + baseline + 4), color, -1)
+            cv2.putText(
+                img=planes[0],
+                text=text,
+                org=(xmin + 2, tag_top + text_h + 2),
+                fontFace=cv2.FONT_HERSHEY_PLAIN,
+                fontScale=0.75,
+                color=16 if color[0] > 128 else 235,
+                thickness=1,
+                lineType=cv2.LINE_AA,
+            )
 
     def _overlay_obj(self, frame: np.ndarray, bbox: List[float]) -> np.ndarray:
         """
@@ -514,7 +556,7 @@ class DetectionWorker(threading.Thread):
     """
 
     # Boxes older than this are dropped, so a stalled Triton doesn't leave stale boxes on screen.
-    # A single inference takes ~0.7-2.2s on a Pi 4 while it is also streaming, so keep this well above that.
+    # A single 640x640 inference takes ~1s on a Pi 4 while it is also streaming, so keep this well above that.
     max_detection_age = 10.0
 
     def __init__(
@@ -630,6 +672,134 @@ def read_exactly(pipe: Any, buffer: bytearray) -> bool:
     return True
 
 
+# Same optional image tuning variables as stream.sh, passed straight to rpicam-vid
+CAMERA_TUNING_VARIABLES = {
+    "CAMERA_EV": "ev",
+    "CAMERA_BRIGHTNESS": "brightness",
+    "CAMERA_GAIN": "gain",
+    "CAMERA_SHUTTER": "shutter",
+    "CAMERA_CONTRAST": "contrast",
+    "CAMERA_SATURATION": "saturation",
+    "CAMERA_SHARPNESS": "sharpness",
+    "CAMERA_AWB": "awb",
+    "CAMERA_DENOISE": "denoise",
+    "CAMERA_METERING": "metering",
+    "CAMERA_EXPOSURE": "exposure",
+}
+
+
+def add_camera_args(parser: EnvArgumentParser) -> None:
+    """
+    Add the camera environment variables shared by main.py and collect_data.py.
+
+    Args:
+        parser (EnvArgumentParser): The parser to add the arguments to.
+    """
+    parser.add_arg("CAMERA_WIDTH", default=1280, d_type=int)
+    parser.add_arg("CAMERA_HEIGHT", default=960, d_type=int)
+    parser.add_arg("CAMERA_FPS", default=30, d_type=int)
+    parser.add_arg("CAMERA_ROTATION", default=180, d_type=int)
+    parser.add_arg("CAMERA_HFLIP", default=False, d_type=bool)
+    parser.add_arg("CAMERA_VFLIP", default=False, d_type=bool)
+    parser.add_arg("CAPTURE_WIDTH", default="", d_type=str)
+    parser.add_arg("CAPTURE_HEIGHT", default="", d_type=str)
+    for variable in CAMERA_TUNING_VARIABLES:
+        parser.add_arg(variable, default="", d_type=str)
+
+
+def camera_settings(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Turn parsed camera environment variables into build_camera_command keyword arguments.
+
+    Args:
+        args (Dict[str, Any]): Arguments parsed after add_camera_args.
+
+    Returns:
+        Dict[str, Any]: Keyword arguments for build_camera_command.
+    """
+    return {
+        "camera_width": args["CAMERA_WIDTH"],
+        "camera_height": args["CAMERA_HEIGHT"],
+        "camera_fps": args["CAMERA_FPS"],
+        "camera_rotation": args["CAMERA_ROTATION"],
+        "camera_hflip": args["CAMERA_HFLIP"],
+        "camera_vflip": args["CAMERA_VFLIP"],
+        "camera_tuning": {
+            flag: args[variable]
+            for variable, flag in CAMERA_TUNING_VARIABLES.items()
+            if args[variable]
+        },
+        "capture_mode": (
+            f"{args['CAPTURE_WIDTH']}:{args['CAPTURE_HEIGHT']}"
+            if args["CAPTURE_WIDTH"] and args["CAPTURE_HEIGHT"]
+            else ""
+        ),
+    }
+
+
+def build_camera_command(
+    camera_width: int,
+    camera_height: int,
+    camera_fps: int,
+    camera_rotation: int,
+    camera_hflip: bool,
+    camera_vflip: bool,
+    camera_tuning: Dict[str, str],
+    capture_mode: str,
+) -> List[str]:
+    """
+    Build the rpicam-vid command that writes raw I420 frames to stdout.
+
+    Args:
+        camera_width (int): The width of the camera frame.
+        camera_height (int): The height of the camera frame.
+        camera_fps (int): The frames-per-second to use on camera.
+        camera_rotation (int): Image rotation, 0 or 180 (180 == hflip + vflip).
+        camera_hflip (bool): Toggles a horizontal flip on top of the rotation.
+        camera_vflip (bool): Toggles a vertical flip on top of the rotation.
+        camera_tuning (Dict[str, str]): rpicam-vid image tuning flags, e.g. {"ev": "0.5"}.
+        capture_mode (str): Sensor mode as "W:H", or "" to let libcamera choose.
+
+    Returns:
+        List[str]: The rpicam-vid command.
+    """
+    if camera_width % 2 or camera_height % 2:
+        raise ValueError("CAMERA_WIDTH and CAMERA_HEIGHT must be even for I420 frames.")
+
+    # Same orientation rules as stream.sh: a 180 rotation is hflip + vflip, and
+    # CAMERA_HFLIP/CAMERA_VFLIP toggle those flips so every orientation is
+    # reachable. 90/270 would need a real rotate the ISP cannot do.
+    if camera_rotation not in (0, 180):
+        print(
+            f"[WARN] CAMERA_ROTATION={camera_rotation} is not supported (expected 0 or 180); treating as 0."
+        )
+        camera_rotation = 0
+    hflip = (1 if camera_rotation == 180 else 0) ^ int(camera_hflip)
+    vflip = (1 if camera_rotation == 180 else 0) ^ int(camera_vflip)
+    print(f"[INFO] Orientation: hflip={hflip} vflip={vflip}")
+
+    camera_command = [
+        "rpicam-vid",
+        "--nopreview",
+        "--timeout", "0",
+        "--width", str(camera_width),
+        "--height", str(camera_height),
+        "--framerate", str(camera_fps),
+        "--codec", "yuv420",
+        "-o", "-",
+    ]
+    if capture_mode:
+        camera_command += ["--mode", capture_mode]
+    if hflip:
+        camera_command.append("--hflip")
+    if vflip:
+        camera_command.append("--vflip")
+    for flag, value in camera_tuning.items():
+        camera_command += [f"--{flag}", value]
+
+    return camera_command
+
+
 def detect_audio_device(audio_device: str) -> str:
     """
     Resolve the ALSA capture device, falling back to the first card `arecord -l` reports.
@@ -708,43 +878,20 @@ def main(
     Returns:
         None
     """
-    if camera_width % 2 or camera_height % 2:
-        raise ValueError("CAMERA_WIDTH and CAMERA_HEIGHT must be even for I420 frames.")
-
     rtmp_url = "rtmp://{}:{}/{}/{}".format(
         stream_ip, stream_port, stream_application, stream_key
     )
 
-    # Same orientation rules as stream.sh: a 180 rotation is hflip + vflip, and
-    # CAMERA_HFLIP/CAMERA_VFLIP toggle those flips so every orientation is
-    # reachable. 90/270 would need a real rotate the ISP cannot do.
-    if camera_rotation not in (0, 180):
-        print(
-            f"[WARN] CAMERA_ROTATION={camera_rotation} is not supported (expected 0 or 180); treating as 0."
-        )
-        camera_rotation = 0
-    hflip = (1 if camera_rotation == 180 else 0) ^ int(camera_hflip)
-    vflip = (1 if camera_rotation == 180 else 0) ^ int(camera_vflip)
-    print(f"[INFO] Orientation: hflip={hflip} vflip={vflip}")
-
-    camera_command = [
-        "rpicam-vid",
-        "--nopreview",
-        "--timeout", "0",
-        "--width", str(camera_width),
-        "--height", str(camera_height),
-        "--framerate", str(camera_fps),
-        "--codec", "yuv420",
-        "-o", "-",
-    ]
-    if capture_mode:
-        camera_command += ["--mode", capture_mode]
-    if hflip:
-        camera_command.append("--hflip")
-    if vflip:
-        camera_command.append("--vflip")
-    for flag, value in camera_tuning.items():
-        camera_command += [f"--{flag}", value]
+    camera_command = build_camera_command(
+        camera_width,
+        camera_height,
+        camera_fps,
+        camera_rotation,
+        camera_hflip,
+        camera_vflip,
+        camera_tuning,
+        capture_mode,
+    )
 
     # Bits-per-pixel presets and the 800k-10M clamp match stream.sh
     bpp = {"ultra": 15, "high": 12, "smooth": 10, "balanced": 8, "medium": 8, "fast": 6, "low": 6}
@@ -827,14 +974,8 @@ def main(
 
             bboxes, confs, indexes = worker.detections()
             if bboxes and worker.annotator is not None:
-                yuv = np.frombuffer(frame, dtype=np.uint8).reshape(
-                    camera_height * 3 // 2, camera_width
-                )
-                bgr = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_I420)
-                bgr = worker.annotator(bgr, bboxes, confs, indexes)
-                encoder.stdin.write(cv2.cvtColor(bgr, cv2.COLOR_BGR2YUV_I420).tobytes())
-            else:
-                encoder.stdin.write(frame)
+                worker.annotator(frame, bboxes, confs, indexes)
+            encoder.stdin.write(frame)
 
         raise RuntimeError(f"rpicam-vid exited with code {camera.wait()}")
 
@@ -865,14 +1006,7 @@ if __name__ == "__main__":
     parser.add_arg("STREAM_PORT", default=1935, d_type=int)
     parser.add_arg("STREAM_APPLICATION", default="live", d_type=str)
     parser.add_arg("STREAM_KEY", default="stream", d_type=str)
-    parser.add_arg("CAMERA_WIDTH", default=1280, d_type=int)
-    parser.add_arg("CAMERA_HEIGHT", default=960, d_type=int)
-    parser.add_arg("CAMERA_FPS", default=30, d_type=int)
-    parser.add_arg("CAMERA_ROTATION", default=180, d_type=int)
-    parser.add_arg("CAMERA_HFLIP", default=False, d_type=bool)
-    parser.add_arg("CAMERA_VFLIP", default=False, d_type=bool)
-    parser.add_arg("CAPTURE_WIDTH", default="", d_type=str)
-    parser.add_arg("CAPTURE_HEIGHT", default="", d_type=str)
+    add_camera_args(parser)
     parser.add_arg("AUDIO_ENABLED", default=False, d_type=bool)
     parser.add_arg("AUDIO_DEVICE", default="", d_type=str)
     parser.add_arg("STREAM_QUALITY", default="high", d_type=str)
@@ -880,23 +1014,6 @@ if __name__ == "__main__":
     parser.add_arg("SANTA_HAT_PLUGIN", default=False, d_type=bool)
     parser.add_arg("CONFIDENCE_THRESHOLD", default=0.25, d_type=float)
     parser.add_arg("CLASSES", default=[], d_type=list)
-
-    # Same optional image tuning variables as stream.sh, passed straight to rpicam-vid
-    tuning_variables = {
-        "CAMERA_EV": "ev",
-        "CAMERA_BRIGHTNESS": "brightness",
-        "CAMERA_GAIN": "gain",
-        "CAMERA_SHUTTER": "shutter",
-        "CAMERA_CONTRAST": "contrast",
-        "CAMERA_SATURATION": "saturation",
-        "CAMERA_SHARPNESS": "sharpness",
-        "CAMERA_AWB": "awb",
-        "CAMERA_DENOISE": "denoise",
-        "CAMERA_METERING": "metering",
-        "CAMERA_EXPOSURE": "exposure",
-    }
-    for variable in tuning_variables:
-        parser.add_arg(variable, default="", d_type=str)
     args = parser.parse_args()
 
     main(
@@ -906,22 +1023,7 @@ if __name__ == "__main__":
         stream_port=args.STREAM_PORT,
         stream_application=args.STREAM_APPLICATION,
         stream_key=args.STREAM_KEY,
-        camera_width=args.CAMERA_WIDTH,
-        camera_height=args.CAMERA_HEIGHT,
-        camera_fps=args.CAMERA_FPS,
-        camera_rotation=args.CAMERA_ROTATION,
-        camera_hflip=args.CAMERA_HFLIP,
-        camera_vflip=args.CAMERA_VFLIP,
-        camera_tuning={
-            flag: args[variable]
-            for variable, flag in tuning_variables.items()
-            if args[variable]
-        },
-        capture_mode=(
-            f"{args.CAPTURE_WIDTH}:{args.CAPTURE_HEIGHT}"
-            if args.CAPTURE_WIDTH and args.CAPTURE_HEIGHT
-            else ""
-        ),
+        **camera_settings(args),
         audio_enabled=args.AUDIO_ENABLED,
         audio_device=args.AUDIO_DEVICE,
         stream_quality=args.STREAM_QUALITY,

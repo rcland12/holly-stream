@@ -270,12 +270,11 @@ STREAM_USER=username       # Username for SCP uploads (motion detection)
 
 ```bash
 # Model Configuration
-MODEL_NAME=yolov8n                    # Model identifier in Triton
-MODEL_DIMS="(640, 640)"               # Model input dimensions (tuple)
-MODEL_REPOSITORY=/root/app/triton     # Path to Triton model repository
-CONFIDENCE_THRESHOLD=0.3              # Detection confidence (0.0-1.0)
-IOU_THRESHOLD=0.25                    # NMS IOU threshold (0.0-1.0)
-CLASSES="[0, 1]"                      # Filter specific classes (optional)
+TRITON_URL=grpc://127.0.0.1:8001      # Triton endpoint (grpc:// or http://)
+MODEL_NAME=yolo11                     # Ensemble name in triton/repository
+MODEL_REPOSITORY=/models              # Model repository path inside the Triton container
+CONFIDENCE_THRESHOLD=0.3              # Minimum score to draw (the model already drops < 0.25)
+CLASSES="[0, 16]"                     # Class indexes to draw, "[]" for all (see labels.txt)
 
 # AWS S3 Model Repository (optional)
 AWS_ACCESS_KEY_ID=your_key_id
@@ -637,161 +636,127 @@ my-bucket/
 └── triton-models/
     ├── preprocess/
     ├── object_detection/
-    ├── postprocess/
-    └── yolov8/
+    └── yolo11/
 ```
 
 ## Custom Model Training
 
-Train a custom YOLOv8 model for specific objects (e.g., detect your pet, specific vehicles, custom objects).
+You train a custom model the normal Ultralytics way: a YOLO11 **detection** model fine-tuned from `yolo11n.pt`. Only two steps are specific to Holly-Stream. You collect images with the Pi's own camera (Step 1), and you convert the trained `best.pt` for Triton with `triton/export.sh` (Step 4).
 
-### Step 1: Data Collection
+### Step 1: Collect Images on the Pi
 
-Use the provided data collection utility:
-
-```bash
-python3 app/collect_data.py
-```
-
-This will capture images at intervals for dataset creation. Collect 200-500 images per class minimum.
-
-### Step 2: Data Annotation
-
-Annotate images in YOLO format. Recommended tools:
-- [Roboflow](https://roboflow.com/) (online, user-friendly)
-- [LabelImg](https://github.com/tzutalin/labelImg) (offline)
-
-**Dataset Split:**
-- Training: 70-80%
-- Validation: 20-30%
-- Testing: Optional 10% holdout
-
-### Step 3: Training Environment Setup
-
-On a CUDA-enabled machine (local or cloud):
+`app/collect_data.py` saves a frame every few seconds. It uses the same `rpicam-vid` capture, resolution, orientation and image tuning as object detection (all read from `.env`), so training images look exactly like what the model will see. Only one process can use the camera, so stop the app first:
 
 ```bash
-pip install ultralytics torch torchvision
+docker compose stop app
+docker compose run --rm --no-deps -v "$PWD/data:/root/app/data" app \
+    python3 collect_data.py --count 200 --period 30
+docker compose start app
+sudo chown -R "$USER" data/    # the container writes the files as root
 ```
 
-### Step 4: Train Model
+`collect_data.py` is baked into the app image, so this needs an image built from this version of the repo (`docker compose build app`). Images land in `data/images/<hostname>_00000.jpg`, `_00001.jpg`, ... Running it again adds to the folder without overwriting, and the hostname prefix keeps images from several Pis apart. `data/` is gitignored.
 
-Create a training script `train.py`:
+Tips for a useful dataset:
+- **Spread images out over time.** Frames taken 5 seconds apart are nearly identical. A longer `--period` over a whole day covers lighting changes, and so does running it at several times of day.
+- **Vary the scene.** Capture your subjects at different distances and positions, and include some images with nothing in them (around 10%).
+- **Aim for a few hundred labeled instances per class to start.** More data beats more epochs.
 
-```python
-from ultralytics import YOLO
+### Step 2: Label the Images
 
-# Load pre-trained model
-model = YOLO('yolov8n.pt')  # nano model for speed
+Label in YOLO format with [CVAT](https://www.cvat.ai/), [Label Studio](https://labelstud.io/) or [Roboflow](https://roboflow.com/). Each image gets a `.txt` file with one line per object: `class x_center y_center width height`, all normalized to 0-1.
 
-# Train
-model.train(
-    data='data.yaml',        # Path to dataset configuration
-    epochs=100,              # Training epochs (increase for better accuracy)
-    batch=16,                # Batch size (adjust for GPU memory)
-    imgsz=640,              # Image size
-    device=0,               # GPU device (0 for first GPU, 'cpu' for CPU)
-    optimizer='AdamW',       # Optimizer
-    patience=50,            # Early stopping patience
-    save=True,              # Save checkpoints
-    project='runs/detect',  # Output directory
-    name='custom_model'     # Experiment name
-)
+> **Label every class you want detected.** Fine-tuning replaces the 80 COCO classes with only the classes in your dataset. If you train on just `my_dog`, the model stops detecting people. To keep people, label them too.
+
+To save time, pre-label with a large COCO model and correct the results instead of drawing every box by hand:
+
+```bash
+yolo predict model=yolo11x.pt source=data/images classes=0,16 save_txt=True   # labels go to runs/detect/predict/labels/
 ```
 
-Create `data.yaml`:
+Most labeling tools can import those files. Keep in mind that the class indexes are COCO's (0=person, 16=dog), so remap them to your own class order.
+
+Split the images about 80/20 into train and val:
+
+```
+datasets/holly/
+├── data.yaml
+├── images/
+│   ├── train/
+│   └── val/
+└── labels/
+    ├── train/
+    └── val/
+```
+
+`data.yaml`:
 
 ```yaml
-# Paths (use absolute paths)
-train: /home/user/holly-stream/datasets/train/images
-val: /home/user/holly-stream/datasets/val/images
-
-# Classes
-nc: 2  # Number of classes
-names: ['my_dog', 'my_cat']  # Class names
+path: /home/user/datasets/holly
+train: images/train
+val: images/val
+names:
+  0: person
+  1: my_dog
 ```
 
-Run training:
-```bash
-python3 train.py
-```
+### Step 3: Train
 
-Training time varies: 2-6 hours on RTX 3060, 12-24+ hours on CPU.
-
-### Step 5: Export to ONNX
-
-After training completes:
-
-```python
-from ultralytics import YOLO
-
-# Load best model
-model = YOLO('runs/detect/custom_model/weights/best.pt')
-
-# Export to ONNX with optimizations
-model.export(
-    format='onnx',      # ONNX format
-    half=True,          # FP16 quantization (smaller, faster)
-    simplify=True,      # Simplify graph
-    opset=12           # ONNX opset version
-)
-```
-
-This creates `best.onnx` in the same directory.
-
-### Step 6: Deploy Custom Model
-
-**Copy model to Triton repository:**
+Train on a desktop, not the Pi. A CUDA GPU is strongly recommended; a CPU works for small datasets but is slow (about 1 minute per epoch for 500 images at `imgsz=320` on a 4-core i5).
 
 ```bash
-cp runs/detect/custom_model/weights/best.onnx triton/object_detection/1/model.onnx
+pip install ultralytics onnx onnxslim    # plus a CUDA build of PyTorch, see pytorch.org
+
+yolo detect train data=datasets/holly/data.yaml model=yolo11n.pt imgsz=320 epochs=100 batch=32 device=0
 ```
 
-**Update Triton configuration** (if model dimensions differ):
+- **Start from `yolo11n.pt`.** The pretrained weights need far less data than training from scratch. Stay with the nano model: YOLO11s is about 3x slower on a Pi 4.
+- **Train at `imgsz=320`** to match the default 256x320 export. If you export at 384x512, train at `imgsz=512`.
+- **The best checkpoint** is saved to `runs/detect/train/weights/best.pt`. Check it with `yolo detect val model=runs/detect/train/weights/best.pt data=datasets/holly/data.yaml imgsz=320`.
 
-Edit `triton/object_detection/config.pbtxt`:
-
-```protobuf
-input [
-  {
-    name: "images"
-    data_type: TYPE_FP32
-    dims: [ 1, 3, 640, 640 ]  # Match your model input
-  }
-]
-output [
-  {
-    name: "output0"
-    data_type: TYPE_FP32
-    dims: [ 1, 84, 8400 ]  # Verify with model.info()
-  }
-]
-```
-
-**Update class labels:**
-
-Edit `triton/yolov8/labels.txt`:
-```
-my_dog
-my_cat
-```
-
-**Update environment variables:**
+### Step 4: Convert for Triton
 
 ```bash
-MODEL_NAME=yolov8n
-MODEL_DIMS="(640, 640)"  # Match training imgsz
-CLASSES="[0, 1]"        # All custom classes
-CONFIDENCE_THRESHOLD=0.5  # Adjust based on model performance
+./triton/export.sh runs/detect/train/weights/best.pt           # 256x320 input (default)
+./triton/export.sh runs/detect/train/weights/best.pt 384 512   # larger input, see below
 ```
 
-### Step 7: Test Custom Model
+This exports ONNX with NMS built in and writes these files:
+- `triton/repository/object_detection/1/model.onnx`
+- `triton/repository/yolo11/labels.txt`, generated from the model's class names
+- the input size in both `config.pbtxt` files
+
+It prints the class indexes at the end. Set `CLASSES` in `.env` to match (for example `CLASSES="[0, 1]"`), or `CLASSES="[]"` to show every class.
+
+Input size is a speed/accuracy trade-off. Measured on a Pi 4 while streaming 1280x960@30, with stock YOLO11n accuracy on COCO val2017:
+
+| Input (HxW) | Inference | Person AP50-95 | Small / medium / large people |
+|-------------|-----------|----------------|-------------------------------|
+| 256x320 (default) | ~210 ms | 39.2 | 12.3 / 46.7 / 74.1 |
+| 384x512 | ~500 ms | 48.5 | 23.1 / 58.4 / 77.9 |
+| 640x640 | ~1000 ms | 51.8 | 28.9 / 62.2 / 78.1 |
+
+256x320 works well when subjects fill a reasonable part of the frame, such as a room. Use 384x512 if you need to catch small or distant subjects, such as across a yard.
+
+The model drops detections below 0.25 confidence inside the graph, so `CONFIDENCE_THRESHOLD` can only raise that floor. To go lower, export with `CONF=0.1 ./triton/export.sh ...`.
+
+### Step 5: Deploy
+
+Get the updated `triton/repository` onto each Pi, either by committing and pulling or with `scp -r triton/repository <pi>:holly-stream/triton/`. Then restart:
 
 ```bash
-./run.sh
+docker compose restart triton app
 ```
 
-Monitor logs for inference errors. Adjust confidence threshold as needed.
+### Step 6: Test
+
+From the machine you exported on (`test.py` reads `labels.txt` from its local repository), send one image through the Pi's Triton:
+
+```bash
+python triton/test.py --url grpc://<pi-ip>:8001 --image data/images/rustypi6_00012.jpg --output results.png
+```
+
+Then watch the stream. If Triton fails to load the model, run `docker logs holly-stream-triton`; the usual cause is a `config.pbtxt` edited by hand to a size that doesn't match the exported model.
 
 ## Multi-Camera Setup
 

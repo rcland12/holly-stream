@@ -172,7 +172,7 @@ ENV PATH=/usr/local/bin:$PATH
 # meson installs the libcamera Python bindings here, which is not on Debian's default sys.path
 ENV PYTHONPATH=/usr/local/lib/python3/dist-packages
 
-COPY main.py stream.sh entrypoint.sh ./
+COPY main.py collect_data.py stream.sh entrypoint.sh ./
 COPY ./images/ ./images/
 
 RUN echo 'SUBSYSTEM=="dma_heap", GROUP="video", MODE="0660"' > /etc/udev/rules.d/10-dma-heap.rules && \

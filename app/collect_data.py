@@ -1,125 +1,107 @@
+import argparse
 import os
+import re
+import signal
+import socket
+import subprocess
+import time
+
 import cv2
+import numpy as np
+from dotenv import load_dotenv
 
-from libcamera import Transform
-from picamera2 import Picamera2
+from main import (
+    EnvArgumentParser,
+    add_camera_args,
+    build_camera_command,
+    camera_settings,
+    read_exactly,
+)
 
 
-def check_save_path(save_path: str, start_index: int) -> int:
+def next_index(save_path: str, prefix: str) -> int:
     """
-    Function to check if save path exists, and create the directory if not.
-    It also will check if the start_index is correct, else will correct it.
+    Find the index after the highest image already saved with this prefix, so repeated runs add to a dataset.
 
     Args:
-        save_path (str): Path where images will be saved to.
-        start_index (int): Index the image numbering starts at.
+        save_path (str): Directory the images are saved to.
+        prefix (str): Filename prefix, e.g. the camera's hostname.
 
     Returns:
-        start_index (int): Unless there are already images present, it will return the start_index that was input.
+        int: The index to start numbering at.
     """
-    if not os.path.isdir(save_path):
-        os.system(f'mkdir {save_path}')
-
-    else:
-        files = os.listdir(save_path)
-
-        if files:
-            numbers = [
-                int(file.split("_")[1].split(".")[0]) if "png" in file else None
-                for file in files
-            ]
-            max_number = max(list(filter(None, numbers)))
-
-            if max_number >= start_index:
-                user_input = input(
-                    f"""\
-                    \n  Detected a maximum of {max_number} images already saved at {save_path}.\
-                    \n  Do you want to start the indexing at {max_number + 1}? (y/n)\
-                    \n"""
-                )
-                match user_input:
-                    case "y":
-                        start_index = max_number + 1
-                    case "n":
-                        pass
-                    case _ :
-                        print("Invalid user input. Enter 'y' or 'n'.")
-                        exit(1)
-
-    return start_index
+    pattern = re.compile(rf"^{re.escape(prefix)}_(\d+)\.jpg$")
+    indexes = [
+        int(match.group(1))
+        for match in map(pattern.match, os.listdir(save_path))
+        if match
+    ]
+    return max(indexes) + 1 if indexes else 0
 
 
-def main(
-    save_path: str,
-    number_to_save: int = 100,
-    start_index: int = 0,
-    period: int = 5,
-    camera_fps: int = 30,
-    camera_width: int = 1280,
-    camera_height: int = 720
-) -> None:
+def main(save_path: str, number_to_save: int, period: float, prefix: str) -> None:
     """
-    This function will take pictures from your camera source every x seconds to collect data for training.
+    Save a camera frame every `period` seconds for building a training dataset.
+
+    Frames come from rpicam-vid with the same size, orientation and image tuning as main.py, so the
+    training images look like what the model sees on the stream. The camera can only be opened by one
+    process, so stop the app container first.
 
     Args:
-        save_path (str): Path where images will be saved. Named as pic_0.png, pic_1.png, ...
-        number_to_save (int): Number of images to collect.
-        start_index (int): Image number to start on. Useful if you have already collected 50 images, you can set start_index to 51.
-        period (int): Save image every period, in seconds.
-        camera_fps (int): Frames per second to capture with camera device.
-        camera_width (int): Width of input image.
-        camera_height (int): Height of input image.
-
-    Returns:
-        None
+        save_path (str): Directory to save images to, named <prefix>_00000.jpg, <prefix>_00001.jpg, ...
+        number_to_save (int): Number of images to save.
+        period (float): Seconds between saved images.
+        prefix (str): Filename prefix.
     """
-    start_index = check_save_path(save_path, start_index)
+    load_dotenv()
+    parser = EnvArgumentParser()
+    add_camera_args(parser)
+    settings = camera_settings(parser.parse_args())
+    width, height = settings["camera_width"], settings["camera_height"]
 
-    frame_index = 0
-    number_to_save = number_to_save + start_index
-    take_picture = camera_fps * period
-    duration = int(1_000_000 / camera_fps)
+    os.makedirs(save_path, exist_ok=True)
+    index = next_index(save_path, prefix)
+    last_index = index + number_to_save
 
-    camera = Picamera2()
-    camera.configure(camera.create_video_configuration(
-        main={
-            "size": (camera_width, camera_height),
-            "format": "RGB888"
-        },
-        transform=Transform(hflip=1, vflip=1),
-        controls={"FrameDurationLimits": (duration, duration)}
-    ))
-    camera.controls.Brightness = 0.2
-    camera.start()
+    camera = subprocess.Popen(
+        build_camera_command(**settings), stdout=subprocess.PIPE, bufsize=0
+    )
+    frame = bytearray(width * height * 3 // 2)
 
+    # Give auto exposure and white balance a moment to settle before the first image
+    next_save = time.monotonic() + 2
     try:
-        while True:
-            frame = camera.capture_array()[:, :, :3]
+        while index < last_index:
+            if not read_exactly(camera.stdout, frame):
+                raise RuntimeError(f"rpicam-vid exited with code {camera.wait()}")
+            if time.monotonic() < next_save:
+                continue
 
-            if frame_index % take_picture == 0:
-                cv2.imwrite(save_path + f"pic_{start_index}.png", frame)
-                print(f"Saving image {start_index}/{number_to_save}")
-                start_index += 1
-
-                if start_index == number_to_save:
-                    print(f"Saved {number_to_save} picture to `{save_path}` successfully.")
-                    break
-
-            frame_index += 1
+            yuv = np.frombuffer(frame, dtype=np.uint8).reshape(height * 3 // 2, width)
+            path = os.path.join(save_path, f"{prefix}_{index:05d}.jpg")
+            cv2.imwrite(path, cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_I420), [cv2.IMWRITE_JPEG_QUALITY, 95])
+            index += 1
+            print(f"Saved {path} ({number_to_save - (last_index - index)}/{number_to_save})", flush=True)
+            next_save += period
 
     finally:
-        camera.stop()
-    
-    return
+        camera.terminate()
+        try:
+            camera.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            camera.kill()
 
 
 if __name__ == "__main__":
-    main(
-        save_path="../data/",
-        number_to_save=200,
-        start_index=0,
-        period=5,
-        camera_fps=30,
-        camera_width=1280,
-        camera_height=720
+    signal.signal(signal.SIGTERM, lambda signum, frame: exit(0))
+
+    parser = argparse.ArgumentParser(
+        description="Save camera frames at an interval for training a custom model. Camera settings come from .env."
     )
+    parser.add_argument("--output", default="data/images", help="Directory to save images to")
+    parser.add_argument("--count", type=int, default=200, help="Number of images to save")
+    parser.add_argument("--period", type=float, default=5, help="Seconds between images")
+    parser.add_argument("--prefix", default=socket.gethostname(), help="Filename prefix (default: hostname)")
+    args = parser.parse_args()
+
+    main(args.output, args.count, args.period, args.prefix)

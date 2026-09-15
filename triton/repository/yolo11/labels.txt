@@ -48,7 +48,7 @@ banana
 apple
 sandwich
 orange
-brocolli
+broccoli
 carrot
 hot dog
 pizza
