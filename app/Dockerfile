@@ -8,38 +8,38 @@ ARG TORCHVISION_BRANCH="release/0.9"
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
         build-essential \
-        cmake \
-        git \
-        wget \
-        unzip \
         ca-certificates \
+        cmake \
         ffmpeg \
-        libgtk2.0-dev \
-        pkg-config \
+        git \
         libavcodec-dev \
         libavformat-dev \
-        libswscale-dev \
-        libgstreamer1.0-dev \
+        libdc1394-22-dev \
         libgstreamer-plugins-base1.0-dev \
-        python2.7-dev \
-        python3.6-dev \
+        libgstreamer1.0-dev \
+        libgtk2.0-dev \
+        libjpeg-dev \
+        libopenblas-base \
+        libopenmpi-dev \
+        libpng-dev \
+        libswscale-dev \
+        libtbb-dev \
+        libtbb2 \
+        libtiff-dev \
+        libv4l-dev \
+        pkg-config \
         python-dev \
         python-numpy \
+        python2.7-dev \
         python3-numpy \
         python3-pip \
-        libtbb2 \
-        libtbb-dev \
-        libjpeg-dev \
-        libpng-dev \
-        libtiff-dev \
-        libdc1394-22-dev \
-        libv4l-dev \
-        v4l-utils \
+        python3.6-dev \
         qv4l2 \
+        unzip \
+        v4l-utils \
         v4l2ucp \
-        libopenblas-base \
-        libopenmpi-dev
-
+        wget
+        
 WORKDIR /app/build
 RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip && \
     wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/${OPENCV_VERSION}.zip && \

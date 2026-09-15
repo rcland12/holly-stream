@@ -293,23 +293,28 @@ class TritonClient:
             Optional[List[str]]: The list of class labels, or None if not available.
         """
 
-        label_filename = self.config["output"][0]["label_filename"]
-        docker_file_path = f"/root/app/triton/{self.model_name}/{label_filename}"
-        local_file_path = os.path.join(
-            os.path.abspath(os.getcwd()),
-            f"triton/{self.model_name}/{label_filename}",
+        label_filename = next(
+            (o["label_filename"] for o in self.config["output"] if o.get("label_filename")),
+            None
         )
+        if label_filename is None:
+            return None
 
-        if os.path.isfile(docker_file_path):
-            with open(docker_file_path, "r") as file:
-                classes = file.read().splitlines()
-        elif os.path.isfile(local_file_path):
-            with open(local_file_path, "r") as file:
-                classes = file.read().splitlines()
-        else:
-            classes = None
+        # Model directories live under triton/repository/ (mounted at /root/app/triton in compose.yml)
+        candidate_paths = [
+            f"/root/app/triton/repository/{self.model_name}/{label_filename}",
+            os.path.join(os.getcwd(), f"triton/repository/{self.model_name}/{label_filename}"),
+            f"/root/app/triton/{self.model_name}/{label_filename}",
+        ]
 
-        return classes
+        for path in candidate_paths:
+            if os.path.isfile(path):
+                with open(path, "r") as file:
+                    return [line for line in file.read().splitlines() if line.strip()]
+
+        raise FileNotFoundError(
+            f"Could not find label file '{label_filename}' for model '{self.model_name}'. Searched: {candidate_paths}"
+        )
 
     def _get_dims(self) -> Tuple[int, int]:
         """
@@ -402,7 +407,6 @@ class Annotator:
             return frame
 
         else:
-            # For santa hat plugin, turn Normalize to True in nms function
             max_index = max(range(len(confs)), key=confs.__getitem__)
             return self._overlay_obj(frame, bboxes[max_index].copy())
 
@@ -417,7 +421,7 @@ class Annotator:
         Returns:
             np.ndarray: The frame with the Santa hat overlaid on the detected object.
         """
-        bbox = [int(i * scalar) for i, scalar in zip(bbox, [self.width, self.height, self.width, self.height])]
+        bbox = [int(i) for i in bbox]
         x, y = bbox[0], bbox[1] + 20
 
         resize_width = bbox[2]-bbox[0]
@@ -462,7 +466,8 @@ def main(
     camera_width: int,
     camera_height: int,
     camera_fps: int,
-    santa_hat_plugin: bool
+    santa_hat_plugin: bool,
+    classes: List[int]
 ):
     """
     Main function to run the RTMP stream, object detection and annotation pipeline.
@@ -479,6 +484,7 @@ def main(
         camera_height (int): The height of the camera frame.
         camera_fps (int): The frames-per-second to use on camera.
         santa_hat_plugin (bool): Indicates whether to use the Santa hat plugin.
+        classes (List[int]): Class indexes to keep when drawing detections. An empty list keeps all classes.
 
     Returns:
         None
@@ -534,7 +540,16 @@ def main(
             frame = camera.read()
 
             if tracking_index % period == 0:
-                bboxes, confs, indexes = model(frame)
+                # Camera frames are BGR, the model expects RGB. Boxes are rescaled back to the camera frame size.
+                bboxes, confs, indexes = model(
+                    cv2.cvtColor(frame, cv2.COLOR_BGR2RGB),
+                    original_shape=frame.shape[:2]
+                )
+                if classes:
+                    keep = [i for i, index in enumerate(indexes) if index in classes]
+                    bboxes = [bboxes[i] for i in keep]
+                    confs = [confs[i] for i in keep]
+                    indexes = [indexes[i] for i in keep]
                 tracking_index = 0
             
             if bboxes:
@@ -553,7 +568,7 @@ if __name__ == "__main__":
     load_dotenv()
     parser = EnvArgumentParser()
     parser.add_arg("TRITON_URL", default="http://localhost:8000", d_type=str)
-    parser.add_arg("MODEL_NAME", default="yolov5s", d_type=str)
+    parser.add_arg("MODEL_NAME", default="yolo11", d_type=str)
     parser.add_arg("STREAM_IP", default="127.0.0.1", d_type=str)
     parser.add_arg("STREAM_PORT", default=1935, d_type=int)
     parser.add_arg("STREAM_APPLICATION", default="live", d_type=str)
@@ -563,6 +578,7 @@ if __name__ == "__main__":
     parser.add_arg("CAMERA_HEIGHT", default=720, d_type=int)
     parser.add_arg("CAMERA_FPS", default=30, d_type=int)
     parser.add_arg("SANTA_HAT_PLUGIN", default=False, d_type=bool)
+    parser.add_arg("CLASSES", default=[], d_type=list)
     args = parser.parse_args()
 
     main(
@@ -576,5 +592,6 @@ if __name__ == "__main__":
         args.CAMERA_WIDTH,
         args.CAMERA_HEIGHT,
         args.CAMERA_FPS,
-        args.SANTA_HAT_PLUGIN
+        args.SANTA_HAT_PLUGIN,
+        args.CLASSES
     )

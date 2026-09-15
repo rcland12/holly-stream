@@ -1,54 +1,10 @@
+.dockerignore
+
 convert.sh
 convert.py
-test.py
-object_detection/
-preprocess/
-yolo11/
-
-# Docker files
 Dockerfile
-.dockerignore
-docker-compose*.yml
+test.py
 
-# Version control
-.git
-.gitignore
-.svn
-.hg
+__pycache__/
+repository/
 
-# Python
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.py[cod]
-*$py.class
-.pytest_cache
-.coverage
-htmlcov/
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Development and IDE files
-.idea/
-.vscode/
-*.swp
-*.swo
-*.swn
-*.bak
-*.log
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db

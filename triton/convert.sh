@@ -22,7 +22,9 @@ yolo export \
     iou=0.45 \
     nms=True
 
-python convert.py --in yolo11n.onnx --out model.onnx --scores_are_logits
+# python convert.py --in yolo11n.onnx --out model.onnx --scores_are_logits
+# removed --scores_are_logits after suggestion
+python convert.py --in yolo11n.onnx --out model.onnx
 
 /usr/src/tensorrt/bin/trtexec \
     --onnx=./model.onnx \

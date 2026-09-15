@@ -153,7 +153,11 @@ class TritonClient:
         if boxes is None or scores is None or classes is None:
             raise RuntimeError("Triton response missing required NMS outputs.")
 
-        n = int(num_dets.reshape(-1)[0]) if num_dets is not None else boxes.shape[1]
+        n = (
+            int(num_dets.reshape(-1)[0])
+            if num_dets is not None
+            else boxes.shape[1]
+        )
         n = max(0, min(n, boxes.shape[1]))
 
         boxes_valid = boxes[0, :n].astype(np.float32, copy=False)
@@ -175,7 +179,7 @@ class TritonClient:
     ) -> np.ndarray:
         """
         Rescale bounding boxes from model coordinates (640x640) to original image size.
-        
+
         Accounts for letterbox/padding that maintains aspect ratio during preprocessing.
 
         Args:
@@ -308,8 +312,8 @@ class TritonClient:
             f"/root/app/triton/{self.model_name}/{label_filename}"
         )
         local_file_path = os.path.join(
-            os.path.abspath(os.getcwd()),
-            f"./{self.model_name}/{label_filename}",
+            os.path.dirname(os.path.abspath(__file__)),
+            f"repository/{self.model_name}/{label_filename}",
         )
         path = (
             docker_file_path
@@ -401,7 +405,7 @@ if __name__ == "__main__":
     image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
 
     client = TritonClient(
-        url="http://localhost:8000",
+        url="grpc://rustynano.home.arpa:8001",
         model="yolo11",
     )
 

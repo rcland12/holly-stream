@@ -1,6 +1,6 @@
 import os
-import cv2
 
+import cv2
 from nanocamera import Camera
 
 
@@ -17,14 +17,16 @@ def check_save_path(save_path: str, start_index: int) -> int:
         start_index (int): Unless there are already images present, it will return the start_index that was input.
     """
     if not os.path.isdir(save_path):
-        os.system(f'mkdir {save_path}')
+        os.system(f"mkdir {save_path}")
 
     else:
         files = os.listdir(save_path)
 
         if files:
             numbers = [
-                int(file.split("_")[1].split(".")[0]) if "png" in file else None
+                int(file.split("_")[1].split(".")[0])
+                if "png" in file
+                else None
                 for file in files
             ]
             max_number = max([n for n in numbers if n is not None])
@@ -54,8 +56,8 @@ def main(
     period: int = 5,
     camera_index: int = 0,
     camera_width: int = 1280,
-    camera_height:int = 720,
-    camera_fps: int = 30
+    camera_height: int = 720,
+    camera_fps: int = 30,
 ) -> None:
     """
     This function will take pictures from your camera source every x seconds to collect data for training.
@@ -80,8 +82,8 @@ def main(
         flip=0,
         width=camera_width,
         height=camera_height,
-        fps=camera_fps
-	)
+        fps=camera_fps,
+    )
 
     frame_index = 0
     number_to_save = number_to_save + start_index
@@ -98,14 +100,15 @@ def main(
 
                 if start_index == number_to_save:
                     break
-            
+
             frame_index += 1
-    
+
         print(f"Saved {number_to_save} picture to `{save_path}` successfully.")
 
     finally:
         camera.release()
         return
+
 
 if __name__ == "__main__":
     main(
@@ -116,5 +119,5 @@ if __name__ == "__main__":
         camera_index=0,
         camera_width=1280,
         camera_height=720,
-        camera_fps=30
+        camera_fps=30,
     )
