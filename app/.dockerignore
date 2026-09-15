@@ -1,8 +1,5 @@
 .dockerignore
-
-collect_data.py
 Dockerfile
-images/logo.png
-images/image_1280_720.png
-
-**pycache**/
+images/
+src/holly-stream
+src/*.so

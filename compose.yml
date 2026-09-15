@@ -1,72 +1,37 @@
-version: "3.8"
-
 services:
   app:
     container_name: holly-stream-app
     image: rcland12/detection-stream:jetson-latest
     build:
       context: ./app
+    runtime: nvidia
     privileged: true
+    network_mode: host
     group_add:
       - audio
-    network_mode: "host"
     devices:
-      - /dev/video0:/dev/video0
       - /dev/snd:/dev/snd
     volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix
       - /tmp/argus_socket:/tmp/argus_socket
-      - ./triton:/root/app/triton
+      - ./models:/models
     env_file: .env
-    runtime: nvidia
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  triton:
-    container_name: holly-stream-triton
-    image: rcland12/detection-stream:jetson-triton-latest
+  nginx:
+    container_name: holly-stream-nginx
+    image: rcland12/detection-stream:nginx-latest
     build:
-      context: ./triton
-    network_mode: "host"
-    shm_size: 256mb
-    volumes:
-      - ./triton/repository:/models
-    env_file: .env
-    runtime: nvidia
+      context: ./nginx
+    network_mode: host
+    restart: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "curl",
-          "-i",
-          "-X",
-          "GET",
-          "http://localhost:8000/v2/health/ready",
-        ]
+      test: ["CMD-SHELL", "nginx -t && kill -0 $$(cat /tmp/nginx.pid)"]
       interval: 10s
-      timeout: 20s
+      timeout: 10s
       retries: 6
-
-  nginx-stream:
-    container_name: holly-stream-nginx-stream
-    image: rcland12/detection-stream:nginx-latest
-    build:
-      context: ./nginx
-    network_mode: "host"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080", "||", "exit", "1"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-      start_period: 10s
-
-  nginx-web:
-    container_name: holly-stream-nginx-web
-    image: rcland12/detection-stream:nginx-latest
-    build:
-      context: ./nginx
-    network_mode: "host"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080", "||", "exit", "1"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
       start_period: 10s

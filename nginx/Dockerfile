@@ -77,6 +77,14 @@ RUN apk add --no-cache \
 COPY --chown=${NGINX_USER}:${NGINX_USER} ./nginx.conf /etc/nginx/nginx.conf
 COPY --chown=${NGINX_USER}:${NGINX_USER} ./stream /var/www/html/stream
 
+ARG HLS_JS_VERSION=1.7.3
+ARG HLS_JS_SHA256=a12e7ee1cd64a69dcdb314157e45dafcba705bfb0b1440b7935cb265d374423e
+RUN mkdir -p /var/www/html/stream/vendor && \
+    wget -q -O /var/www/html/stream/vendor/hls.min.js \
+        "https://cdn.jsdelivr.net/npm/hls.js@${HLS_JS_VERSION}/dist/hls.min.js" && \
+    echo "${HLS_JS_SHA256}  /var/www/html/stream/vendor/hls.min.js" | sha256sum -c - && \
+    chown -R ${NGINX_USER}:${NGINX_USER} /var/www/html/stream/vendor
+
 USER ${NGINX_USER}
 
 CMD ["nginx", "-g", "daemon off;"]
