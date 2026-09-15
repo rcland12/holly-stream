@@ -86,13 +86,16 @@ Design choices:
 ## Repository layout
 
 ```
+run.sh, stop.sh, status.sh  start, stop or check the camera on this Pi
+run-all-cameras.sh          start every camera listed in .env over SSH (also stop-all-, status-all-cameras.sh)
+all-cameras.sh              what the *-all-cameras.sh scripts run (the same on every branch)
+.env.example                the camera list for the *-all-cameras.sh scripts
 camera/                     Raspberry Pi side
   install.sh                install or update the camera service (run on the Pi)
   uninstall.sh              remove it (run on the Pi)
   camera.env.example        settings template, installed to /etc/holly-stream/camera.env
   holly-camera.sh           the GStreamer pipeline
   holly-camera.service      systemd unit
-  remote.sh                 start/stop/restart/status/logs for cameras over SSH, from any machine
 server/                     server side
   compose.yml               holly-ingest, plus holly-detector under the "detection" profile
   .env.example              server settings
@@ -143,30 +146,49 @@ module, and optionally a USB microphone.
 On the Pi:
 
 ```bash
-git clone -b raspbian https://github.com/rcland12/holly-stream.git
-cd holly-stream/camera
-sudo ./install.sh
+git clone -b raspbian https://github.com/rcland12/holly-stream.git ~/dev/holly-stream
+cd ~/dev/holly-stream
+sudo ./camera/install.sh
 sudo nano /etc/holly-stream/camera.env     # SERVER_HOST, STREAM_NAME, DETECTION, ROTATION
+./run.sh
 ```
 
-`install.sh` installs GStreamer and the service but does not start it. Start the camera on the Pi with
-`sudo systemctl enable --now holly-camera`, or from any machine that can SSH to it:
+`install.sh` installs GStreamer and the `holly-camera` service. **The camera never starts on its own**, not on
+install and not on boot: it streams from `run.sh` until `stop.sh`, restarting itself after errors in between. The
+installing user can run both without a password, so they work over SSH.
+
+### Starting and stopping cameras
+
+On a Pi: `./run.sh`, `./stop.sh` and `./status.sh`.
+
+For all cameras at once, from any machine with SSH keys for them (e.g. the server, or wherever a phone shortcut
+connects to), list them in `.env` in the repository root:
 
 ```bash
-./camera/remote.sh start rustypi6
+cp .env.example .env
+nano .env        # CAMERA_HOSTNAMES=(rustypi2 rustypi6 rustynano)
 ```
 
-### Day to day
+```bash
+./run-all-cameras.sh
+./stop-all-cameras.sh
+./status-all-cameras.sh
+```
 
-From the server (or any machine with SSH access to the Pis):
+```
+rustypi2     unreachable
+rustypi6     ok: streaming  STREAM_NAME=hollystream4/hollyvideostream4 DETECTION=true ROTATION=0
+rustynano    ok: started
+```
+
+They reach every camera in parallel and run its `run.sh`, `stop.sh` or `status.sh` in `~/dev/holly-stream` (set
+`CAMERA_REPO_PATHS` for other locations). Any camera whose clone has those scripts can be in the list, so cameras
+running the `raspbian`, `jetson` and `linux` branches can be controlled together.
+
+What the server is receiving:
 
 ```bash
-./camera/remote.sh start rustypi6               # start now and on every boot
-./camera/remote.sh stop rustypi6                # stop and keep stopped across reboots
-./camera/remote.sh restart rustypi6             # after editing camera.env
-./camera/remote.sh status rustypi2 rustypi6     # running?, stream name, detection, rotation
-./camera/remote.sh logs rustypi6                # follow the camera's log
-./server/status.sh                              # what the server is receiving
+./server/status.sh
 ```
 
 ```
@@ -175,13 +197,16 @@ hollystream3/hollyvideostream3  192.168.1.21  0       off                    pla
 hollystream4/hollyvideostream4  192.168.1.20  0       on, 30.1 fps, 10.3 ms  annotated
 ```
 
-- **Turn detection on or off:** set `DETECTION=true` or `false` in the Pi's `/etc/holly-stream/camera.env`, then
-  `remote.sh restart`. The server needs the detector running (`--profile detection`) for boxes to appear.
-- **Move a camera:** change its `STREAM_NAME` and restart. Only one camera can use a name at a time; a second one
-  is refused until the first disconnects.
-- **Update a camera:** `git pull` on the Pi (on the `raspbian` branch), then `sudo ./install.sh` again. It keeps `camera.env`, adds any new
-  settings with their defaults, and restarts the camera if it was running.
-- **Remove a camera:** `sudo ./uninstall.sh` on the Pi (`--purge` also deletes its settings).
+### Changing a camera
+
+- **Detection on or off:** set `DETECTION=true` or `false` in the Pi's `/etc/holly-stream/camera.env`, then
+  `./stop.sh && ./run.sh`. The server needs the detector running (`--profile detection`) for boxes to appear.
+- **Move a camera:** change its `STREAM_NAME` and restart it. Only one camera can use a name at a time; a second
+  one is refused until the first disconnects.
+- **Update:** `git pull` on the `raspbian` branch, then `sudo ./camera/install.sh` again. It keeps `camera.env`, adds
+  any new settings with their defaults, and restarts the camera if it was running.
+- **Logs:** `journalctl -u holly-camera -f` on the Pi.
+- **Remove:** `sudo ./camera/uninstall.sh` (`--purge` also deletes its settings).
 
 ### Watching
 
@@ -197,11 +222,11 @@ With `RELAY_URL` set, also wherever it points, e.g. your nginx-rtmp's HLS and re
 
 ### Camera (`/etc/holly-stream/camera.env`)
 
-Apply changes with `remote.sh restart <pi>` or `sudo systemctl restart holly-camera`.
+Apply changes by restarting the camera: `./stop.sh && ./run.sh`.
 
 | Variable | Default | Description |
 |---|---|---|
-| `SERVER_HOST` | required | The server's LAN address |
+| `SERVER_HOST` | required | The server's hostname or LAN IP |
 | `SERVER_PORT` | `8890` | The ingest's SRT port |
 | `STREAM_NAME` | required | Name this camera streams under, e.g. `hollystream4/hollyvideostream4`; relayed to `RELAY_URL` with `{name}` replaced by it |
 | `DETECTION` | `false` | `true` to have the server draw object detections on this camera |
@@ -274,10 +299,14 @@ Train a YOLO detection model the normal Ultralytics way, on the server's GPU or 
 
 ## Troubleshooting
 
-**`status.sh` does not list the camera.** Run `./camera/remote.sh logs <pi>`. A missing setting is named there.
+**`server/status.sh` does not list the camera.** Run `./status.sh` and `journalctl -u holly-camera -f` on the Pi. A
+missing setting is named there.
 `Socket is broken or closed` means the Pi cannot reach the ingest: check `SERVER_HOST` and that port 8890/udp is
 open on the server (Docker-published ports are). In `docker compose logs holly-ingest`,
 `someone is already publishing` means another camera already uses that stream name.
+
+**`run.sh` says it could not start without a password.** Re-run `sudo ./camera/install.sh` as the user who runs
+`run.sh`; it allows that user to start and stop the camera.
 
 **The camera keeps restarting without frames.** Only one process can use the camera. Stop anything else holding
 it (`rpicam-*`, an old container) and check `rpicam-hello --list-cameras` on the Pi.

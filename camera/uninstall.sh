@@ -2,7 +2,7 @@
 #
 # Removes the Holly Stream camera service from this Pi.
 #
-# Usage, on the Pi:  sudo ./uninstall.sh [--purge]
+# Usage, on the Pi from the repository:  sudo ./camera/uninstall.sh [--purge]
 #
 #   --purge   also delete /etc/holly-stream (this camera's settings) and the holly service user.
 #
@@ -15,8 +15,9 @@ if [[ ${EUID} -ne 0 ]]; then
     exit 1
 fi
 
-systemctl disable --now holly-camera.service 2>/dev/null || true
-rm -f /etc/systemd/system/holly-camera.service /usr/local/bin/holly-camera.sh
+systemctl stop holly-camera.service 2>/dev/null || true
+rm -f /etc/systemd/system/holly-camera.service /etc/systemd/system/multi-user.target.wants/holly-camera.service \
+    /usr/local/bin/holly-camera.sh /etc/sudoers.d/holly-camera
 systemctl daemon-reload
 
 if [[ "${1:-}" == "--purge" ]]; then

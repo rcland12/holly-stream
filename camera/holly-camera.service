@@ -1,5 +1,7 @@
+# Holly Stream camera. Started and stopped on demand with run.sh and stop.sh; deliberately has no [Install]
+# section, so it never starts on boot.
 [Unit]
-Description=Holly Stream camera (Pi camera + mic -> SRT -> Holly detector)
+Description=Holly Stream camera (Pi camera + mic -> SRT -> Holly server)
 Wants=network-online.target
 After=network-online.target sound.target
 
@@ -9,12 +11,9 @@ User=holly
 Group=holly
 SupplementaryGroups=video audio render
 ExecStart=/usr/local/bin/holly-camera.sh /etc/holly-stream/camera.env
-# The pipeline exits whenever the connection drops or the detector restarts; come straight back
+# The pipeline exits whenever the connection drops or the server restarts; come straight back until stopped
 Restart=always
 RestartSec=3
 # Keep capture and encode ahead of anything else on the Pi
 Nice=-5
 IOSchedulingClass=realtime
-
-[Install]
-WantedBy=multi-user.target

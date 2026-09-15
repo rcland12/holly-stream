@@ -8,7 +8,7 @@
 # With DETECTION=true, the server's GPU detector draws object detections on it first (see server/).
 #
 # Usage: holly-camera.sh [config]   (default /etc/holly-stream/camera.env)
-# Exits on any error or lost connection; the systemd unit restarts it.
+# Exits on any error; the systemd unit restarts it until stop.sh. Started by run.sh.
 
 set -euo pipefail
 
