@@ -1,0 +1,75 @@
+# Holly ingest (MediaMTX 1.21, the -ffmpeg image).
+#
+# Every camera publishes here over SRT under its stream name, e.g.
+#   srt://<server>:8890?streamid=publish:hollystream4/hollyvideostream4:::rotate=0&detect=1
+# For cameras with detection on, the detector reads the camera over RTSP and publishes a copy with detections
+# drawn under annotated/<name>. relay.sh copies each camera (annotated when available, plain otherwise) to
+# RELAY_URL, e.g. nginx-rtmp. Every stream can also be watched here directly:
+#   HLS:    http://<server>:8888/<name>            (with audio)
+#   WebRTC: http://<server>:8889/<name>            (sub-second latency, video only)
+#   RTSP:   rtsp://<server>:8554/<name>            (VLC)
+# with <name> being either the camera's stream name or annotated/<stream name>.
+#
+# Anything not set here uses MediaMTX's defaults.
+
+logLevel: info
+logDestinations: [stdout]
+
+# Only private networks may publish (cameras on the LAN, the detector on the Docker network). Anyone who can reach
+# the ports may watch; do not forward them to the internet.
+authMethod: internal
+authInternalUsers:
+  - user: any
+    ips: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.1/32"]
+    permissions:
+      - action: publish
+      - action: api
+  - user: any
+    permissions:
+      - action: read
+      - action: playback
+
+api: yes
+apiAddress: :9997
+
+# Cameras
+srt: yes
+srtAddress: :8890
+
+# The detector and relay read streams over RTSP
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp]
+rtspEncryption: "no"
+
+# The detector publishes annotated copies over RTMP
+rtmp: yes
+rtmpAddress: :1935
+rtmpEncryption: "no"
+
+# Browser viewing. Streams are only packaged for HLS while someone is watching.
+hls: yes
+hlsAddress: :8888
+# Set MTX_WEBRTCADDITIONALHOSTS to the server's LAN address in compose
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: ""
+
+moq: no
+playback: no
+metrics: no
+pprof: no
+
+pathDefaults:
+  # A second camera using a stream name that is already live is refused instead of taking it over
+  overridePublisher: no
+
+paths:
+  # Annotated copies from the detector. relay.sh picks these up itself, so they need no hook.
+  "~^annotated/":
+
+  # Cameras: relay each one while it is connected (see relay.sh)
+  all_others:
+    runOnAvailable: sh /relay.sh $MTX_PATH
+    runOnAvailableRestart: yes

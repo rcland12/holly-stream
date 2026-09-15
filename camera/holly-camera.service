@@ -1,0 +1,20 @@
+[Unit]
+Description=Holly Stream camera (Pi camera + mic -> SRT -> Holly detector)
+Wants=network-online.target
+After=network-online.target sound.target
+
+[Service]
+Type=simple
+User=holly
+Group=holly
+SupplementaryGroups=video audio render
+ExecStart=/usr/local/bin/holly-camera.sh /etc/holly-stream/camera.env
+# The pipeline exits whenever the connection drops or the detector restarts; come straight back
+Restart=always
+RestartSec=3
+# Keep capture and encode ahead of anything else on the Pi
+Nice=-5
+IOSchedulingClass=realtime
+
+[Install]
+WantedBy=multi-user.target
