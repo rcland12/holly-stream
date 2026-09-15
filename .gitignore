@@ -1,4 +1,12 @@
 .env
 *.log
-
 **__pycache__/
+models/*.engine
+models/*.engine.partial
+app/src/holly-stream
+app/src/*.so
+
+# Custom model workflow: captured/labeled images, training runs, checkpoints
+data/
+runs/
+*.pt

@@ -14,7 +14,6 @@ echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdi
 REPO="rcland12/detection-stream"
 IMAGES=(
   jetson
-  jetson-triton
   nginx
 )
 

@@ -1,109 +1,27 @@
-FROM nvcr.io/nvidia/l4t-base:r32.7.1
+# Holly Stream for Jetson Nano (JetPack 4.6.x / L4T R32.7, DeepStream 6.0.1)
+#
+# Build on the Jetson itself (docker-compose build); the nvidia runtime must be
+# the default runtime so CUDA/TensorRT headers are mounted during the build.
 
-ARG OPENCV_VERSION="4.5.1"
-ARG PYTORCH_VERSION="1.8.0"
-ARG TORCHVISION_VERSION="0.9.0"
-ARG TORCHVISION_BRANCH="release/0.9"
+# The samples image ships the DeepStream headers needed to compile.
+FROM nvcr.io/nvidia/deepstream-l4t:6.0.1-samples AS build
 
-RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends \
-        build-essential \
-        ca-certificates \
-        cmake \
-        ffmpeg \
-        git \
-        libavcodec-dev \
-        libavformat-dev \
-        libdc1394-22-dev \
-        libgstreamer-plugins-base1.0-dev \
-        libgstreamer1.0-dev \
-        libgtk2.0-dev \
-        libjpeg-dev \
-        libopenblas-base \
-        libopenmpi-dev \
-        libpng-dev \
-        libswscale-dev \
-        libtbb-dev \
-        libtbb2 \
-        libtiff-dev \
-        libv4l-dev \
-        pkg-config \
-        python-dev \
-        python-numpy \
-        python2.7-dev \
-        python3-numpy \
-        python3-pip \
-        python3.6-dev \
-        qv4l2 \
-        unzip \
-        v4l-utils \
-        v4l2ucp \
-        wget
-        
-WORKDIR /app/build
-RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip && \
-    wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/${OPENCV_VERSION}.zip && \
-    unzip opencv.zip && \
-    unzip opencv_contrib.zip && \
-    mv opencv-${OPENCV_VERSION} opencv && \
-    mv opencv_contrib-${OPENCV_VERSION} opencv_contrib && \
-    rm opencv.zip && \
-    rm opencv_contrib.zip && \
-    mkdir ./opencv/build && \
-    cd ./opencv/build && \
-    cmake \
-        -D WITH_CUDA=ON \
-        -D WITH_CUDNN=ON \
-        -D CUDA_ARCH_BIN=5.3 \
-        -D CUDA_ARCH_PTX="" \
-        -D OPENCV_GENERATE_PKGCONFIG=ON \
-        -D OPENCV_EXTRA_MODULES_PATH=../../opencv_contrib/modules \
-        -D WITH_GSTREAMER=ON \
-        -D WITH_LIBV4L=ON \
-        -D BUILD_opencv_python2=ON \
-        -D BUILD_opencv_python3=ON \
-        -D BUILD_TESTS=OFF \
-        -D BUILD_PERF_TESTS=OFF \
-        -D BUILD_EXAMPLES=OFF \
-        -D CMAKE_BUILD_TYPE=RELEASE \
-        -D CMAKE_INSTALL_PREFIX=/usr/local .. && \
-    make -j$(nproc) && \
-    make install && \
-    make clean && \
-    apt-get update && \
-    cd ../.. && \
-    rm -rf opencv opencv_contrib
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m pip install --upgrade pip && \
-    python3 -m pip install setuptools && \
-    python3 -m pip install --no-cache-dir \
-        attrdict==2.0.1 \
-        Cython==3.0.12 \
-        future==1.0.0 \
-        grpcio-tools==1.48.2 \
-        imutils==0.5.4 \
-        numpy==1.19.4 \
-        nanocamera==0.1.5 \
-        pillow==8.4.0 \
-        python-dotenv==0.20.0 && \
-    wget https://nvidia.box.com/shared/static/p57jwntv436lfrd78inwl7iml6p13fzh.whl \
-        -O torch-${PYTORCH_VERSION}-cp36-cp36m-linux_aarch64.whl && \
-    python3 -m pip install --no-cache-dir torch-${PYTORCH_VERSION}-cp36-cp36m-linux_aarch64.whl && \
-    rm torch-${PYTORCH_VERSION}-cp36-cp36m-linux_aarch64.whl && \
-    git clone --branch ${TORCHVISION_BRANCH} https://github.com/pytorch/vision torchvision && \
-    cd torchvision && \
-    export BUILD_VERSION=${TORCHVISION_VERSION} && \
-    python3 setup.py install --user && \
-    cd .. && \
-    rm -rf torchvision && \
-    wget https://github.com/triton-inference-server/server/releases/download/v2.16.0/tritonserver2.16.0-jetpack4.6.tgz && \
-    mkdir tritonserver/ && \
-    tar -xzf tritonserver2.16.0-jetpack4.6.tgz -C ./tritonserver/ && \
-    python3 -m pip install --upgrade --no-cache-dir ./tritonserver/clients/python/tritonclient-2.16.0-py3-none-any.whl[all] && \
-    rm tritonserver2.16.0-jetpack4.6.tgz && \
-    rm -rf ./tritonserver/
+WORKDIR /src
+COPY src/ .
+RUN make
 
-WORKDIR /app
-COPY main.py stream.sh entrypoint.sh ./
-COPY ./images/ ./
-CMD ["/bin/bash", "entrypoint.sh"]
+# The base image has every runtime plugin used here (nvarguscamerasrc, nvinfer,
+# nvtracker, nvdsosd, nvv4l2h264enc, flvmux, rtmpsink, alsasrc, voaacenc).
+FROM nvcr.io/nvidia/deepstream-l4t:6.0.1-base
+
+COPY --from=build /src/holly-stream /src/libnvdsinfer_custom_impl_yolo.so /opt/holly-stream/
+COPY config/ /opt/holly-stream/config/
+COPY entrypoint.sh collect_data.sh /opt/holly-stream/
+
+# GStreamer log level: 1 = errors only. Set GST_DEBUG=2 in .env to include warnings.
+ENV GST_DEBUG=1
+ENTRYPOINT ["/opt/holly-stream/entrypoint.sh"]
