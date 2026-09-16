@@ -15,7 +15,15 @@ services:
       - /tmp/argus_socket:/tmp/argus_socket
       - ./models:/models
     env_file: .env
-    restart: unless-stopped
+    environment:
+      # Set by run.sh; entrypoint.sh stays stopped if Docker starts this container in a later boot
+      HOLLY_BOOT_ID: ${HOLLY_BOOT_ID:-}
+    # holly-stream runs only between run.sh and stop.sh. on-failure brings the app back after errors and watchdog
+    # stalls (non-zero exits); a SIGTERM from docker-compose down or a shutdown exits 0 and is not restarted, and the
+    # boot ID check in entrypoint.sh covers restarts after a power cut.
+    restart: on-failure
+    # Longer than the app's own 10 second shutdown, so a stop is never mistaken for a failure
+    stop_grace_period: 20s
     logging:
       driver: json-file
       options:
@@ -28,7 +36,8 @@ services:
     build:
       context: ./nginx
     network_mode: host
-    restart: unless-stopped
+    # Started by run.sh when publishing locally; never on boot
+    restart: "no"
     healthcheck:
       test: ["CMD-SHELL", "nginx -t && kill -0 $$(cat /tmp/nginx.pid)"]
       interval: 10s
