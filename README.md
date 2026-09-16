@@ -232,14 +232,43 @@ Apply changes by restarting the camera: `./stop.sh && ./run.sh`.
 | `DETECTION` | `false` | `true` to have the server draw object detections on this camera |
 | `ROTATION` | `0` | `180` for an upside-down camera |
 | `SRT_LATENCY_MS` | `300` | Retransmission window; raise to 500-1000 on weak WiFi |
-| `WIDTH` / `HEIGHT` / `FPS` | `1280` / `960` / `30` | Capture size; 4:3 uses the full sensor on most modules |
+| `WIDTH` / `HEIGHT` / `FPS` | `1280` / `960` / `30` | Capture size. 4:3 matches most camera modules; `1280`/`720` gives a widescreen picture that fills a 16:9 player (see [Framing](#framing)) |
+| `ZOOM` | `1.0` | Digital zoom: `1.3` crops 30% in from every edge, e.g. to take the stretched edges off a fisheye |
+| `SENSOR_MODE` | `auto` | Sensor mode to capture in: `auto` keeps the widest view for the chosen size, `none` lets libcamera pick, or `WxH` from `rpicam-hello --list-cameras` |
 | `BITRATE_KBPS` | `6000` | Pi to server bitrate |
 | `KEYINT_SECONDS` | `2` | Keyframe interval (2 lines up with 2 second HLS segments) |
+| `VIDEO_CONVERTER` | `auto` | Element between camera and encoder: `auto` adds `videoconvert` on Bookworm, where the encoder cannot take the camera's buffers directly; `none` on Trixie |
 | `CAMERA_OPTIONS` | `exposure-value=0.5` | `libcamerasrc` properties, e.g. `brightness=0.1 awb-mode=indoor` |
 | `AUDIO_DEVICE` | `auto` | `auto`, `none`, or an ALSA device such as `plughw:1,0` |
 | `AUDIO_CHANNELS` / `AUDIO_BITRATE_KBPS` | `1` / `96` | AAC settings |
 
 List every camera property with `gst-inspect-1.0 libcamerasrc` on the Pi.
+
+#### Framing
+
+`WIDTH`/`HEIGHT` set the shape of the picture, not how much the camera sees - that is fixed by the lens. A Pi
+camera module sees a 4:3 area, so `1280x960` shows everything it has and a 16:9 player pillarboxes it with black
+bars at the sides, while `1280x720` fills that player by keeping the full width of the view and cutting the top and
+bottom off. Nothing makes the view wider except a wider lens or camera module.
+
+Asking for a widescreen size by itself makes that worse: libcamera answers `1280x720` with a sensor mode that is
+already cropped in (on an OV5647, one that reads 74% of the sensor's width and 56% of its height), so the picture
+ends up both narrower and more zoomed. `SENSOR_MODE=auto` prevents this by capturing in the smallest mode that
+still reads the whole sensor and can supply `WIDTH`x`HEIGHT` at `FPS`, so the widescreen frame keeps the entire
+width of the view. If the camera has no full-sensor mode fast enough for what was asked (an OV5647 can only read
+its whole sensor at 1080 lines at 15 fps), the camera logs a warning and lets libcamera choose.
+
+`ZOOM` crops the other way, tightening the view around its centre. The ISP applies it while it is already scaling
+the frame, so it is free, and it costs no detail until the crop falls below `WIDTH`x`HEIGHT` - on a 2592x1944
+sensor sending 1280x720, that is about 2x. It suits a fisheye, where the outer edge of the picture is the most
+stretched part and often shows black beyond the lens' image circle.
+
+| Camera module | Sees | Widest full-sensor mode |
+|---|---|---|
+| OV5647 (Camera Module 1) | 4:3, about 54 degrees across | 1296x972 at 46 fps |
+| IMX519 (Arducam 16MP) | 4:3, about 80 degrees across | 2328x1748 at 30 fps |
+| IMX708 (Camera Module 3) | **16:9** natively, 75 degrees (102 on the Wide version) | 2304x1296 at 56 fps |
+| Fisheye lens (OV5647 or IMX519 body) | 4:3, 160+ degrees across, as a circle inside the frame | as the body above |
 
 ### Server (`server/.env`)
 
@@ -275,6 +304,11 @@ YOLO26 matches YOLO11's speed at each size and is more accurate for people and d
 every frame, and they share the GPU's ~33 ms per 30 fps frame: YOLO26m suits one or two detection cameras,
 YOLO26s three or more, or a GPU that is often busy with other work. `status.sh` shows each camera's inference time.
 
+Going over that budget does not fail loudly, it just drops frames, which looks like stutter and blockiness in the
+stream. On a GTX 1660, four cameras on YOLO26m ran at 22-24 fps with 28 ms inference each; the same four on YOLO26s
+hold 30 fps at ~8 ms each. Set `BITRATE_KBPS` to at least what the cameras send (`BITRATE_KBPS` in camera.env,
+6000 by default), or the re-encoded stream looks softer than the camera's own.
+
 ## Custom models
 
 Train a YOLO detection model the normal Ultralytics way, on the server's GPU or anywhere else.
@@ -307,6 +341,11 @@ open on the server (Docker-published ports are). In `docker compose logs holly-i
 
 **`run.sh` says it could not start without a password.** Re-run `sudo ./camera/install.sh` as the user who runs
 `run.sh`; it allows that user to start and stop the camera.
+
+**The camera says it is streaming but the server never sees it,** with no errors in its log. On Raspberry Pi OS
+Bookworm (GStreamer before 1.24) the hardware encoder cannot take the camera's buffers directly and the pipeline
+stalls silently. `VIDEO_CONVERTER=auto` handles this; force it with `VIDEO_CONVERTER=videoconvert` in the camera's
+`camera.env`, which costs about 10% of a core. Upgrading the Pi to Trixie removes the need.
 
 **The camera keeps restarting without frames.** Only one process can use the camera. Stop anything else holding
 it (`rpicam-*`, an old container) and check `rpicam-hello --list-cameras` on the Pi.
