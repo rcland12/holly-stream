@@ -1035,43 +1035,51 @@ curl http://localhost:8000/v2/models/yolo11
 
 ## Multi-Camera Setup
 
-Manage multiple Ubuntu server cameras from a central location.
+Start, stop and check every camera from one machine, e.g. a server that a phone shortcut connects to.
+
+holly-stream never starts on its own, not even on boot: a camera runs only between `./run.sh` and `./stop.sh`, so
+cameras can be left powered on and started or stopped remotely. The app's compose restart policy is `"no"` for this
+reason; Docker's other policies all start containers again at boot.
 
 ### Configuration
 
-On your control machine, edit `.env`:
+On the control machine, list the cameras in `.env` in the repository root:
 
 ```bash
-# Multi-camera orchestration
-CAMERA_USERS="user,user,user"
-CAMERA_HOSTNAMES="192.168.1.10,192.168.1.11,192.168.1.12"
-CAMERA_REPO_PATHS="/home/user/holly-stream,/home/user/holly-stream,/home/user/holly-stream"
+CAMERA_HOSTNAMES=(rustynano rustypi2 rustypi6)
+# Optional, one per camera: SSH user (default: your SSH config / current user) and clone path under the home
+# directory (default: dev/holly-stream)
+CAMERA_USERS=(user user user)
+CAMERA_REPO_PATHS=(dev/holly-stream dev/holly-stream dev/holly-stream)
 ```
 
 **Requirements:**
 
-- SSH access to all camera devices
-- Holly-stream installed on each device
-- Each device has its own `.env` configuration
+- SSH key access from the control machine to every camera (no password prompts)
+- holly-stream cloned on each camera, with its own `.env`
+- Cameras can run different branches (`linux`, `raspbian`, `jetson`); each only needs `run.sh`, `stop.sh` and
+  `status.sh` in its clone
 
-### Starting All Cameras
+### Starting, Stopping and Checking All Cameras
 
 ```bash
 ./run-all-cameras.sh
-```
-
-This script will:
-
-1. SSH into each camera host
-2. Navigate to repository path
-3. Execute `./run.sh`
-4. Start streaming on all devices simultaneously
-
-### Stopping All Cameras
-
-```bash
 ./stop-all-cameras.sh
+./status-all-cameras.sh
 ```
+
+Every camera is reached in parallel, runs its own `run.sh`, `stop.sh` or `status.sh`, and gets one line in the output:
+
+```
+rustynano    ok: started
+rustypi2     unreachable
+rustypi6     ok: streaming  STREAM_NAME=hollystream4/hollyvideostream4 DETECTION=true ROTATION=0
+```
+
+A camera whose `run.sh` is still working after 150 seconds (e.g. building a TensorRT engine) is reported as still
+working and carries on starting; set `CAMERA_COMMAND_TIMEOUT` in `.env` to change the wait.
+
+On a single camera, the same scripts run directly: `./run.sh`, `./stop.sh`, `./status.sh`.
 
 ### Use Cases
 

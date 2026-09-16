@@ -9,6 +9,9 @@ stream-*.ts
 *.pt
 data/
 old_triton/
+deepstream/
+triton/new_models/
+triton/repository/
 
 ### Linux ###
 *~

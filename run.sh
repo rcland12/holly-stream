@@ -1,24 +1,31 @@
 #!/bin/bash
+#
+# Starts holly-stream on this device. It runs until stop.sh and never starts on boot.
+# Run it here, or for every camera at once from another machine with run-all-cameras.sh.
+# The last line printed is a one-line result, which run-all-cameras.sh shows for this camera.
 
+cd "$(dirname "$0")"
 source .env
 
-[[ -z $OBJECT_DETECTION ]] && echo "The environment variable OBJECT_DETECTION is required. This is a boolean value True/False." && exit 1
-
-if [[ ! "${OBJECT_DETECTION}" =~ ^(True|False)$ ]]; then
-    echo "Invalid input for OBJECT_DETECTION. Expecting True or False; received ${OBJECT_DETECTION}."
-    exit 120
+if [[ ! "${OBJECT_DETECTION:-}" =~ ^(True|False)$ ]]; then
+    echo "$(hostname): OBJECT_DETECTION in .env must be True or False (got '${OBJECT_DETECTION:-}')"
+    exit 1
 fi
 
 if [[ "${OBJECT_DETECTION}" == "True" ]]; then
     docker compose up -d triton
-    
+
     echo "Waiting to start Holly Stream until Triton is healthy."
-    for ((attempt=1; attempt<=60; attempt++)); do
-        if docker compose exec -it triton curl -s -f "http://localhost:8000/v2/health/ready" > /dev/null; then
-            break
+    # Read the compose healthcheck instead of exec-ing into the container, which needs a terminal and fails
+    # when run over SSH from run-all-cameras.sh
+    for ((attempt = 1; attempt <= 60; attempt++)); do
+        [[ "$(docker inspect -f '{{.State.Health.Status}}' holly-stream-triton 2>/dev/null)" == "healthy" ]] && break
+        if [[ ${attempt} -eq 60 ]]; then
+            docker compose down
+            echo "$(hostname): Triton was not healthy after 60 seconds; stopped"
+            exit 1
         fi
         sleep 1
-        [[ $attempt -eq 60 ]] && echo "Triton failed all health checks after 60 seconds. Stopping all services." && exit 120
     done
 fi
 
@@ -27,18 +34,15 @@ echo "Holly Stream has started. Performing health check..."
 sleep 10
 
 for i in {1..12}; do
-    if [ "$( docker container inspect -f '{{.State.Running}}' holly-stream-app )" = "true" ]; then
-        echo "Holly Stream STATUS: HEALTHY"
-        break
-    elif [ $i -eq 12 ]; then
-        echo "Holly STREAM STATUS: UNHEALTHY"
-        echo "Shutting down."
-        docker compose down
-        exit 1
-    else
-        echo "Health check attempt: $i/12"
-        sleep 5
+    if [ "$(docker container inspect -f '{{.State.Running}}' holly-stream-app 2>/dev/null)" = "true" ]; then
+        echo "$(hostname): started"
+        exit 0
     fi
+    echo "Health check attempt: $i/12"
+    sleep 5
 done
 
-echo "System running."
+docker logs --tail 20 holly-stream-app
+docker compose down
+echo "$(hostname): the app did not stay running; stopped"
+exit 1

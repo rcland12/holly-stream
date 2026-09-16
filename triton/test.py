@@ -395,7 +395,7 @@ if __name__ == "__main__":
     image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
 
     client = TritonClient(
-        url="http://localhost:8000",
+        url="grpc://localhost:8001",
         model="yolo11",
     )
 
