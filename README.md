@@ -95,6 +95,7 @@ Measured on a Jetson Nano 4GB (MAXN, `MAX_PERFORMANCE=True`) with an IMX219 at
 .env.example              every setting, copy to .env
 compose.yml               app (DeepStream) + nginx (RTMP/HLS/web player)
 run.sh / stop.sh          start (waits for the pipeline) / stop
+status.sh                 streaming, starting or stopped
 app/
   Dockerfile              builds the C app on DeepStream 6.0.1
   entrypoint.sh           max-performance mode, then starts the app
@@ -109,7 +110,8 @@ models/
   export.py               .pt -> DeepStream-ready .onnx (+ labels)
   train.py                labeled dataset -> trained, exported custom model
 nginx/                    local RTMP + HLS server and web player
-run-all-cameras.sh / stop-all-cameras.sh   start/stop several cameras over SSH
+run-all-cameras.sh / stop-all-cameras.sh / status-all-cameras.sh   control several cameras over SSH
+all-cameras.sh            what those three run (the same file on every branch)
 docker-push.sh            push images to Docker Hub
 ```
 
@@ -137,8 +139,11 @@ docker-compose build         # on the Jetson; pulls DeepStream 6.0.1 (~2 GB)
 The first start of a model builds its TensorRT engine, which takes about 10–15
 minutes on a Nano (`run.sh` waits for it). Later starts take seconds.
 
-Both services use `restart: unless-stopped`, so the stream also comes back
-after a reboot. Stop everything with `./stop.sh`.
+holly-stream runs only between `./run.sh` and `./stop.sh` (`./status.sh` shows
+whether it is streaming). It never starts on boot, so the Jetson can stay powered
+on and be started and stopped remotely. While it runs, Docker restarts the app
+after errors and watchdog stalls; `run.sh` records the current boot, and the app
+stays stopped if Docker starts it again after a reboot or power cut.
 
 **Recommended on WiFi:** turn off WiFi power saving. On the Nano's Intel card it
 causes large throughput dips:
@@ -148,6 +153,38 @@ sudo nmcli connection modify "<your SSID>" 802-11-wireless.powersave 2
 sudo nmcli connection up "<your SSID>"
 iw dev wlan0 get power_save   # Power save: off
 ```
+
+## Several cameras
+
+From any machine with SSH keys for your cameras (e.g. a server that a phone
+shortcut connects to), list them in that machine's `.env`:
+
+```bash
+CAMERA_HOSTNAMES=(rustynano rustypi2 rustypi6)
+# Optional, one per camera: SSH user, and clone path under the home directory
+#CAMERA_USERS=(russ russ russ)
+#CAMERA_REPO_PATHS=(dev/holly-stream dev/holly-stream dev/holly-stream)
+```
+
+```bash
+./run-all-cameras.sh
+./stop-all-cameras.sh
+./status-all-cameras.sh
+```
+
+Every camera is reached in parallel, runs its own `run.sh`, `stop.sh` or
+`status.sh`, and gets one line of output:
+
+```
+rustynano    ok: streaming  -> rtmp://rusty.home.arpa:1935/hollystream1  OBJECT_DETECTION=True
+rustypi2     unreachable
+rustypi6     ok: started
+```
+
+Cameras on other branches (`raspbian`, `linux`) have the same three scripts, so
+they can share the list. A camera still starting after 150 seconds (e.g.
+building a TensorRT engine) is reported as still working and carries on; set
+`CAMERA_COMMAND_TIMEOUT` to change the wait.
 
 ## Watching the stream
 
