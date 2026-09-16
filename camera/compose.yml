@@ -1,0 +1,57 @@
+name: holly-camera
+
+# Holly Stream camera for a Linux machine with a USB webcam. Started by ../run.sh, which picks the profile:
+#
+#   docker compose --profile nvidia up -d     NVIDIA GPU: JPEG decode and H.264 encode on the GPU
+#   docker compose --profile default up -d    anything else: VAAPI (Intel/AMD GPU) or x264 on the CPU
+#
+# Settings are in camera.env (see camera.env.example).
+
+x-camera: &camera
+  image: rcland12/detection-stream:linux-camera-latest
+  build: .
+  container_name: holly-camera
+  env_file: camera.env
+  environment:
+    # Set by run.sh; the camera stays stopped if Docker starts this container in a later boot
+    HOLLY_BOOT_ID: ${HOLLY_BOOT_ID:-}
+  # The camera only calls out (SRT to the server), so host networking just lets SERVER_HOST be localhost, a LAN
+  # name or an IP without any Docker network setup
+  network_mode: host
+  # /dev is mounted whole, with access limited to cameras (81), sound (116) and render nodes (226), so the webcam is
+  # found again when it is unplugged and comes back under a different /dev/video number
+  volumes:
+    - /dev:/dev
+    # Compiled CUDA filter kernels, so only the first start compiles them
+    - cuda-cache:/cache
+  device_cgroup_rules:
+    - "c 81:* rmw"
+    - "c 116:* rmw"
+    - "c 226:* rmw"
+  group_add:
+    - audio
+    - video
+  # holly-camera runs only between run.sh and stop.sh. on-failure brings it back after errors and watchdog stalls
+  # (non-zero exits); a stop exits 0 and is not restarted, and the boot ID check covers restarts after a power cut.
+  restart: on-failure
+  stop_grace_period: 15s
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+volumes:
+  cuda-cache:
+
+services:
+  holly-camera:
+    <<: *camera
+    profiles: [default]
+
+  holly-camera-nvidia:
+    <<: *camera
+    profiles: [nvidia]
+    gpus: all

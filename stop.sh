@@ -1,12 +1,13 @@
 #!/bin/bash
 #
-# Stops holly-stream on this device. Run it here, or for every camera at once with stop-all-cameras.sh.
+# Stops the camera on this machine. Run it here, or for every camera at once with stop-all-cameras.sh.
 
-cd "$(dirname "$0")"
+set -euo pipefail
 
-if docker compose down; then
+cd "$(dirname "$0")/camera"
+if docker compose --profile '*' down >/dev/null 2>&1; then
     echo "$(hostname): stopped"
 else
-    echo "$(hostname): could not stop holly-stream"
+    echo "$(hostname): could not stop holly-camera"
     exit 1
 fi

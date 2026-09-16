@@ -1,0 +1,82 @@
+name: holly-stream
+
+# Holly Stream server.
+#
+#   docker compose up -d                          ingest only: cameras stream plain
+#   docker compose --profile detection up -d      ingest and GPU detector: cameras with DETECTION=true get boxes
+#
+# Cameras connect to the ingest by themselves (see ../camera/, or any holly-stream camera on another branch), so nothing
+# here changes when cameras are added, moved or removed. Settings are read from .env (see .env.example). To run these in an existing compose stack instead,
+# copy both services and adjust the relative paths.
+#
+# Ports are published through Docker, which on hosts with ufw also means they are reachable without ufw rules.
+
+services:
+  holly-ingest:
+    image: bluenviron/mediamtx:1.21.0-ffmpeg
+    container_name: holly-ingest
+    restart: unless-stopped
+    environment:
+      # This server's LAN address, advertised to WebRTC viewers
+      MTX_WEBRTCADDITIONALHOSTS: ${SERVER_LAN_IP:-}
+      # Where each camera is relayed ({name} = its stream name), e.g. rtmp://nginx:1935/{name}; empty = don't relay
+      RELAY_URL: ${RELAY_URL:-}
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+      - ./relay.sh:/relay.sh:ro
+    ports:
+      - 8890:8890/udp # SRT from cameras
+      - ${HLS_PORT:-8888}:8888 # HLS: http://<server>:8888/<stream name>
+      - 8889:8889 # WebRTC: http://<server>:8889/<stream name>
+      - 8189:8189/udp # WebRTC media
+      - 8554:8554 # RTSP: rtsp://<server>:8554/<stream name>
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9997/v3/paths/list || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  holly-detector:
+    image: rcland12/detection-stream:linux-detector-latest
+    build: .
+    container_name: holly-detector
+    profiles: [detection]
+    restart: unless-stopped
+    depends_on:
+      holly-ingest:
+        condition: service_healthy
+    gpus: all
+    env_file: .env
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    volumes:
+      # ONNX models from export_model.sh; TensorRT engines are built into models/engines on first start
+      - ./models:/models
+      # status.json for status.sh, and training snapshots when SNAPSHOT_INTERVAL is set
+      - ./data:/data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # The supervisor rewrites status.json every couple of seconds
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json, sys, datetime as d; s = json.load(open('/data/status.json')); sys.exit((d.datetime.now(d.timezone.utc) - d.datetime.fromisoformat(s['updated'])).total_seconds() > 30)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # The first start with a new model builds its TensorRT engine, which takes a few minutes
+      start_period: 600s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
