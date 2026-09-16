@@ -32,7 +32,9 @@ services:
     cpu_shares: 256
     mem_limit: 1g
     pids_limit: 200
-    restart: unless-stopped
+    # Never start on boot: holly-stream runs only between run.sh and stop.sh. Docker's other restart policies
+    # (unless-stopped, always, on-failure) can all start the container again when the machine boots.
+    restart: "no"
 
   triton:
     container_name: holly-stream-triton
