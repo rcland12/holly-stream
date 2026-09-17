@@ -1,371 +1,230 @@
 # Contributing to Holly Stream
 
-Thank you for your interest in contributing to Holly Stream! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing. This guide explains how the repository is organized, how to work on
+each platform, and what a pull request needs.
 
 ## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [Branch Strategy](#branch-strategy)
-- [Development Environment Setup](#development-environment-setup)
-- [How to Contribute](#how-to-contribute)
-- [Pull Request Process](#pull-request-process)
-- [Coding Standards](#coding-standards)
+- [How the repository is organized](#how-the-repository-is-organized)
+- [Getting started](#getting-started)
+- [Working on each branch](#working-on-each-branch)
+- [Things shared across branches](#things-shared-across-branches)
+- [Reporting bugs and suggesting features](#reporting-bugs-and-suggesting-features)
+- [Pull requests](#pull-requests)
+- [Coding standards](#coding-standards)
 - [Testing](#testing)
-- [Areas for Contribution](#areas-for-contribution)
+- [Areas for contribution](#areas-for-contribution)
 
 ## Code of Conduct
 
-Be respectful, professional, and constructive in all interactions. We aim to maintain a welcoming environment for all contributors.
+Be respectful, professional and constructive in all interactions.
 
-## Getting Started
+## How the repository is organized
 
-1. **Fork the repository** on GitHub
-2. **Clone your fork** locally:
+Each hardware platform is a separate branch with its own pipeline. The platform branches are never merged into each
+other.
+
+| Branch | What it contains |
+|---|---|
+| `master` | Project overview, license and this guide. No code. |
+| `raspbian` | Raspberry Pi camera (`camera/`: GStreamer + systemd) and the Holly server (`server/`: MediaMTX ingest + GPU detector) |
+| `linux` | Linux USB webcam camera (`camera/`: FFmpeg in Docker) and the Holly server (`server/`) |
+| `jetson` | Jetson Nano: DeepStream pipeline in C (`app/`), models and training scripts (`models/`), nginx-rtmp web player (`nginx/`) |
+| `raspbian_develop`, `linux_develop`, `jetson_develop` | Work in progress for each platform |
+
+Changes land on a `*_develop` branch first and reach the platform branch through a pull request once they have been
+tested on the hardware. Users clone the platform branches, so those must always work.
+
+## Getting started
+
+1. **Fork** the repository on GitHub.
+2. **Clone your fork** with the branch you will work on. Clone each platform into its own directory if you work on
+   more than one:
    ```bash
-   git clone https://github.com/YOUR-USERNAME/holly-stream.git
-   cd holly-stream
+   git clone -b linux_develop https://github.com/YOUR-USERNAME/holly-stream.git holly-stream
+   git clone -b raspbian_develop https://github.com/YOUR-USERNAME/holly-stream.git holly-stream-raspbian
+   git clone -b jetson_develop https://github.com/YOUR-USERNAME/holly-stream.git holly-stream-jetson
    ```
-3. **Add the upstream repository** as a remote:
+3. **Add the upstream repository**:
    ```bash
    git remote add upstream https://github.com/rcland12/holly-stream.git
    ```
-4. **Switch to the appropriate branch** for your target platform (jetson, linux, or raspbian)
+4. **Create a feature branch** from the develop branch:
+   ```bash
+   git checkout -b feature/short-description
+   ```
 
-## Branch Strategy
+## Working on each branch
 
-This project uses a multi-branch strategy to support different hardware platforms:
+Each branch's README covers setup, configuration and troubleshooting in full. What follows is what you need to
+develop on it.
 
-- **master**: Contains project overview, license, and general documentation only
-- **jetson**: NVIDIA Jetson platform implementation (Jetson Nano, JetPack OS)
-- **linux**: Linux x86_64 implementation with NVIDIA GPU support
-- **raspbian**: Raspberry Pi implementation (Pi 4, Debian-based OS)
+### `raspbian`
 
-### Contributing to a Specific Branch
+- **Camera** (`camera/holly-camera.sh`, run by the `holly-camera` systemd service): needs a Raspberry Pi 4 or 5 on
+  Raspberry Pi OS Bookworm or Trixie with a camera module. After editing, reinstall with `sudo ./camera/install.sh`
+  and watch `journalctl -u holly-camera -f`. GStreamer before 1.24 (Bookworm) behaves differently from Trixie, so
+  say which one you tested.
+- **Server** (`server/`): needs Linux with Docker, and an NVIDIA GPU (Turing or newer, driver 560+, NVIDIA Container
+  Toolkit) for the detector. Rebuild and run with
+  `docker compose --profile detection up -d --build` and follow `docker compose logs -f holly-detector`.
+  `./server/status.sh` shows what each camera is doing. Set `LOG_STATS=true` to log fps and timings.
 
-When contributing, target the appropriate platform branch:
+### `linux`
 
-```bash
-# For Jetson development
-git checkout jetson
+- **Camera** (`camera/`): needs Linux with Docker and a UVC webcam. Rebuild with
+  `docker compose -f camera/compose.yml --profile '*' build`, then `./stop.sh && ./run.sh` and
+  `docker logs -f holly-camera`. The encoder path depends on the hardware (NVENC, VAAPI or x264), so test the ones
+  you touch; `ENCODER=x264` forces the CPU path on any machine.
+- **Server** (`server/`): as for `raspbian`, above.
 
-# For Linux development
-git checkout linux
+A camera and a server can run on the same machine (`SERVER_HOST=127.0.0.1`), which is the quickest way to test the
+whole chain.
 
-# For Raspberry Pi development
-git checkout raspbian
-```
+### `jetson`
 
-Create your feature branch from the platform branch you're working on:
+- Needs a Jetson Nano 4GB with JetPack 4.6.x (DeepStream 6.0.1, TensorRT 8.2), a CSI camera, and Docker with the
+  NVIDIA runtime as the default.
+- The pipeline is `app/src/holly_stream.c` with the YOLO output parser in `app/src/nvdsparsebbox_yolo.cpp`, built
+  by `app/src/Makefile` inside the Docker image. Build on the Jetson with `docker-compose build`, then `./run.sh`.
+- `docker logs -f holly-stream-app | grep STATS` shows capture, inference and stream fps, latency and upload rate.
+- Models must be exported with `models/export.py` (TensorRT 8.2-compatible ops, `[N, 6]` output). A new model
+  builds its engine on first start, which takes 10-15 minutes on a Nano.
 
-```bash
-git checkout -b feature/your-feature-name
-```
+## Things shared across branches
 
-## Development Environment Setup
+Some files and interfaces are used by more than one branch. Keep them compatible, and make the same change on every
+branch that has them.
 
-### Prerequisites
+- **`all-cameras.sh`** (and `run-all-cameras.sh`, `stop-all-cameras.sh`, `status-all-cameras.sh`) is identical on
+  every branch.
+- **`run.sh`, `stop.sh` and `status.sh`** at the top of every branch are what the multi-camera scripts call over
+  SSH. They must:
+  - run without prompts, over SSH with no terminal;
+  - end with a one-line result such as `<hostname>: started`, `<hostname>: stopped` or `<hostname>: streaming ...`;
+  - exit non-zero on failure.
+- **Never start on boot.** Every camera runs only between `run.sh` and `stop.sh`, restarting itself after errors
+  in between. Keep that behavior: Docker containers check `HOLLY_BOOT_ID`, and the Pi's systemd unit has no
+  `[Install]` section.
+- **`server/`** is the same Holly server in `raspbian` and `linux`. A detector or ingest change on one belongs on the
+  other.
+- **The camera protocol**: cameras publish MPEG-TS over SRT to the ingest with the stream id
+  `publish:<stream name>:::<options>`. The detector reads `detect=1` and `rotate=180` from the options. A new option
+  must be ignored safely by older detectors and cameras.
+- **Model format**: the server detector expects ONNX with one `[1, 3, H, W]` input and one `[1, N, 6]` output of
+  `x1, y1, x2, y2, score, class`, and the class names in the Ultralytics metadata.
 
-- Docker and Docker Compose
-- Git
-- Python 3.6+ (for non-Docker development)
-- NVIDIA GPU with appropriate drivers (for GPU-accelerated inference)
+## Reporting bugs and suggesting features
 
-### Platform-Specific Setup
+Check [GitHub Issues](https://github.com/rcland12/holly-stream/issues) first. A new bug report should include:
 
-#### Jetson
-- NVIDIA Jetson device (tested on Jetson Nano)
-- JetPack SDK 4.6.4+
-- CSI or USB camera
-- 4GB swap memory (recommended)
+- the branch and commit;
+- the hardware: device, GPU and driver, camera, OS version;
+- what you did, what you expected and what happened;
+- logs: `journalctl -u holly-camera` (Pi), `docker logs holly-camera` (Linux camera),
+  `docker compose logs holly-ingest holly-detector` (server), `docker logs holly-stream-app` (Jetson), and the
+  output of `./status.sh` or `./server/status.sh`.
 
-#### Linux
-- Ubuntu 20.04+ or compatible distribution
-- NVIDIA GPU with CUDA support
-- NVIDIA Container Toolkit
-- USB or CSI camera
+For a feature, describe the use case, the platform or platforms it affects, and any implementation ideas.
 
-#### Raspberry Pi
-- Raspberry Pi 4 (minimum)
-- Raspbian 64-bit (Debian Bookworm or later)
-- CSI or USB camera
+## Pull requests
 
-### Environment Configuration
-
-Create a `.env` file in the project root with your development settings:
-
-```bash
-OBJECT_DETECTION=True
-MODEL=yolov5s
-CONFIDENCE_THRESHOLD=0.3
-IOU_THRESHOLD=0.25
-STREAM_IP=127.0.0.1
-STREAM_PORT=1935
-STREAM_APPLICATION=live
-STREAM_KEY=stream
-CAMERA_INDEX=0
-CAMERA_WIDTH=1280
-CAMERA_HEIGHT=720
-CAMERA_FPS=22
-```
-
-## How to Contribute
-
-### Reporting Bugs
-
-1. Check the [Issues](https://github.com/rcland12/holly-stream/issues) page to see if the bug has already been reported
-2. If not, create a new issue with:
-   - Clear, descriptive title
-   - Detailed description of the problem
-   - Steps to reproduce
-   - Expected vs. actual behavior
-   - Platform/branch information
-   - Hardware specifications
-   - Relevant logs or error messages
-
-### Suggesting Enhancements
-
-1. Open an issue with the `enhancement` label
-2. Provide a clear description of the proposed feature
-3. Explain the use case and benefits
-4. Include any implementation ideas or references
-
-### Submitting Code Changes
-
-1. **Keep changes focused**: One feature or fix per pull request
-2. **Follow existing code style**: Match the patterns in the codebase
-3. **Write clear commit messages**: Use descriptive, imperative messages
-4. **Test thoroughly**: Ensure your changes work on the target platform
-5. **Update documentation**: Modify README or other docs as needed
-
-## Pull Request Process
-
-1. **Update your fork** with the latest upstream changes:
+1. **Keep your branch current**:
    ```bash
    git fetch upstream
-   git checkout jetson  # or linux/raspbian
-   git merge upstream/jetson
+   git rebase upstream/linux_develop   # or raspbian_develop / jetson_develop
    ```
+2. **Keep each pull request focused**: one fix or feature, on one platform unless it touches shared files.
+3. **Open the pull request against the matching `*_develop` branch**, never against `master` or a platform branch
+   directly (documentation changes to this guide or the overview go to `master`).
+4. **Describe**:
+   - what changed and why;
+   - the hardware you tested on and how (see [Testing](#testing));
+   - before and after numbers for performance changes (fps, inference time, CPU and GPU use, latency).
+5. **Update the documentation**: the branch README for anything a user sees, and `.env.example` or
+   `camera.env.example` for every new setting, with its default and a short explanation.
 
-2. **Create a feature branch**:
-   ```bash
-   git checkout -b feature/descriptive-name
-   ```
+## Coding standards
 
-3. **Make your changes** and commit them:
-   ```bash
-   git add .
-   git commit -m "Add descriptive commit message"
-   ```
+Match the style of the file you are editing. In general:
 
-4. **Push to your fork**:
-   ```bash
-   git push origin feature/descriptive-name
-   ```
+### Shell
 
-5. **Open a Pull Request** on GitHub:
-   - Select the appropriate base branch (jetson, linux, or raspbian)
-   - Provide a clear title and description
-   - Reference any related issues
-   - Describe what was changed and why
-   - Include testing details
+- `#!/bin/bash` and `set -euo pipefail` for scripts that do work; quote every variable expansion.
+- A header comment saying what the script does, how it is run and what it prints.
+- Validate settings early and fail with a message that names the setting and the value it got.
+- Run [ShellCheck](https://www.shellcheck.net/) on scripts you change.
 
-6. **Respond to review feedback** promptly and make requested changes
+### Python (server detector)
 
-7. **Squash commits** if requested before merging
+- Python 3.12, type hints, and docstrings for classes and non-obvious functions.
+- Keep per-frame work on the GPU where it already is; a copy between the CPU and the GPU on every frame is a
+  performance regression.
+- Settings come from environment variables in `holly/config.py`, with defaults that work.
+- Pin dependency versions in `requirements.txt`.
 
-### Pull Request Guidelines
+### C / C++ (Jetson)
 
-- Target the correct platform branch (not master)
-- Ensure Docker builds succeed
-- Test the full streaming pipeline end-to-end
-- Update README if adding features or changing configuration
-- Add comments for complex logic
-- Avoid unnecessary dependencies
+- C for the pipeline, C++11 for the nvinfer parser, building cleanly with `-Wall` against DeepStream 6.0.1 headers.
+- Target JetPack 4.6 / TensorRT 8.2; newer APIs are not available on the Nano.
 
-## Coding Standards
+### Docker and configuration
 
-### Python
-
-- Follow PEP 8 style guidelines
-- Use meaningful variable and function names
-- Add docstrings for functions and classes
-- Keep functions focused and modular
-- Use type hints where appropriate
-
-### Example:
-
-```python
-def process_frame(frame: np.ndarray, confidence: float = 0.3) -> np.ndarray:
-    """
-    Process a video frame with object detection.
-
-    Args:
-        frame: Input frame as numpy array
-        confidence: Detection confidence threshold
-
-    Returns:
-        Processed frame with bounding boxes
-    """
-    # Implementation
-    pass
-```
-
-### Docker
-
-- Keep Dockerfiles clean and well-commented
-- Minimize layer count
-- Use multi-stage builds where appropriate
-- Pin dependency versions for reproducibility
-
-### Configuration
-
-- Use environment variables for configuration
-- Provide sensible defaults
-- Document all configuration options
-- Validate input parameters
+- Pin base images and package versions. Comment anything a reader would not guess (runtime capabilities, device
+  rules, why a layer is separate).
+- Every setting gets a documented entry in the example env file and the README configuration table.
+- Defaults should work for the common case without editing.
 
 ## Testing
 
-### Before Submitting
+There is no automated test suite; the pipelines depend on cameras and GPUs, so pull requests are tested on
+hardware. Before submitting, check:
 
-1. **Build test**: Ensure Docker images build successfully
-   ```bash
-   docker compose build
-   ```
+1. **Build**: the Docker images build (`docker compose build`, or `docker-compose build` on the Jetson), or the
+   camera installs cleanly (`sudo ./camera/install.sh` on a Pi).
+2. **Start and stop**: `./run.sh` reports `started`, `./status.sh` reports streaming, and `./stop.sh` stops
+   it. Run them over SSH as well if you changed them.
+3. **The stream**: it plays in a browser (HLS or WebRTC) and VLC, with audio if the camera has a microphone, both
+   with detection on and off.
+4. **Recovery**: the pipeline comes back on its own after the thing you changed fails. For example, restart the
+   ingest, stop the detector, or disconnect the camera or network.
+5. **Performance**: fps and inference time (`./server/status.sh`, `LOG_STATS=true`, or `STATS` lines on the
+   Jetson), and CPU and GPU use, compared with before your change.
+6. **Stability**: let it run for at least 30 minutes for anything touching timestamps, audio, encoding or
+   networking; some problems only show up after the first few minutes.
 
-2. **Run test**: Start the full application stack
-   ```bash
-   ./run.sh
-   ```
+If you cannot test on a platform your change affects, say so in the pull request.
 
-3. **Stream test**: Verify streaming works on target platform
-   - Test RTMP streaming to media player
-   - Test HLS streaming in web browser
-   - Test with object detection enabled and disabled
+## Areas for contribution
 
-4. **Performance test**: Check resource usage and FPS
-   - Monitor CPU/GPU utilization
-   - Verify acceptable latency
-   - Test with different model configurations
+### Platforms
 
-### Hardware Testing
+- Newer Jetsons (Orin Nano, Xavier) on current JetPack and DeepStream releases
+- Jetson cameras publishing to the Holly server over SRT, like the Pi and Linux cameras
+- A detector for non-NVIDIA GPUs or accelerators (Intel, AMD, Hailo, Coral)
+- Testing the Linux camera on Intel and AMD GPUs (VAAPI) and on ARM boards
 
-Since this project targets specific hardware platforms, contributors should test on the relevant architecture when possible. If you don't have access to the target hardware, clearly note this in your pull request.
+### Detection
 
-## Areas for Contribution
+- Object tracking on the server (e.g. ByteTrack), with IDs that persist across frames
+- Batching several cameras into one TensorRT inference
+- Segmentation and pose models
+- Detection events: snapshots, webhooks or notifications when a class appears
 
-We welcome contributions in the following areas:
+### Streaming
 
-### Platform Support
+- Adaptive bitrate for weak WiFi links
+- Recording and clip export directly from the ingest
+- Better WebRTC support, including audio
 
-- Support for additional NVIDIA Jetson models (Xavier, Orin, etc.)
-- Support for AMD GPUs
-- Support for Intel integrated graphics
-- ARM64 optimization
-- macOS support
+### Operations
 
-### Streaming Enhancements
-
-- WebRTC implementation for ultra-low latency
-- DASH (Dynamic Adaptive Streaming over HTTP) support
-- UDP streaming optimization
-- Multi-bitrate streaming (adaptive quality)
-- Audio support
-
-### Object Detection Features
-
-- YOLOv8/YOLOv9/v11 model support
-- Other detection frameworks (SSD, Faster R-CNN, etc.)
-- Object tracking (DeepSORT, ByteTrack)
-- Pose estimation integration
-- Segmentation support
-- Custom class training workflows
-
-### Performance Optimization
-
-- Multi-camera support
-- Frame buffering and queue management
-- Model quantization improvements
-- Batch processing optimization
-- Memory usage reduction
-
-### Deployment
-
-- Kubernetes deployment manifests
-- Ansible playbooks for automated setup
-- Systemd service files
-- Docker Swarm configuration
-- Auto-restart and health monitoring
-
-### Documentation
-
-- Tutorial videos or blog posts
-- Architecture diagrams
-- Troubleshooting guides
-- Performance benchmarking
-- Use case examples
-
-### Code Quality
-
-- Unit tests and integration tests
-- CI/CD pipeline setup
-- Code linting and formatting
-- Security vulnerability scanning
-- Dependency updates
-
-### User Experience
-
-- Web UI for configuration
-- Mobile app for viewing streams
-- CLI improvements
-- Configuration wizard
-- Stream preview without full setup
-
-## Development Tips
-
-### Debugging
-
-Enable verbose logging in your `.env`:
-```bash
-LOG_LEVEL=DEBUG
-```
-
-Access container logs:
-```bash
-docker compose logs -f app
-docker compose logs -f triton
-```
-
-### Testing Models Locally
-
-Use the provided test script:
-```bash
-cd triton
-python test.py
-```
-
-### Converting Models
-
-Convert ONNX models to TensorRT:
-```bash
-cd triton
-./convert.sh path/to/model.onnx
-```
-
-## Questions?
-
-If you have questions about contributing:
-
-1. Check existing issues and pull requests
-2. Review the branch-specific README
-3. Open a discussion issue on GitHub
-4. Reach out through GitHub Issues
+- CI that builds the Docker images and runs ShellCheck
+- Unit tests for the detector's pure-Python parts (box smoothing, overlays, config parsing)
+- A metrics endpoint (e.g. Prometheus) for fps, latency and GPU use
+- Documentation: setup walkthroughs, architecture notes, troubleshooting reports from your hardware
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the same license as the project (see [LICENSE](LICENSE) file).
-
----
-
-Thank you for contributing to Holly Stream! Your efforts help make this project better for everyone.
+By contributing, you agree that your contributions are licensed under the project's [MIT License](LICENSE).

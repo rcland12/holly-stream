@@ -2,121 +2,157 @@
 
 <img src="./logo.png" alt="Holly Stream Logo" style="width: auto;">
 
-A real-time video streaming application with integrated AI-powered object detection. Stream your webcam feed with live bounding box detection via RTMP/HLS protocols to media players, web browsers, or remote servers.
+Live camera streams with real-time object detection drawn on every frame. Raspberry Pi cameras, USB webcams on
+Linux machines and NVIDIA Jetsons stream to your server or website, with YOLO boxes (or, in December, Santa hats)
+rendered by TensorRT on an NVIDIA GPU. With detection off, it works as a plain low-latency live camera that restarts
+itself after errors.
 
----
+**This branch holds no code.** Each hardware platform has its own branch with its own pipeline, README and setup
+instructions. Pick one below.
 
-## Overview
+## Choose your branch
 
-Holly Stream captures video from your camera, applies YOLO-based object detection with visual bounding boxes, and streams the processed feed in real-time. The application can also function as a simple live stream camera when object detection is disabled, making it ideal for security systems, monitoring applications, and AI-powered surveillance.
+| Branch | Runs on | Camera | Where detection runs | Output |
+|---|---|---|---|---|
+| [`raspbian`](https://github.com/rcland12/holly-stream/tree/raspbian) | Raspberry Pi 4 or 5 (camera), plus a Linux server with an NVIDIA GPU | Pi camera module (libcamera), optional USB mic | On the server's GPU | SRT to the Holly server, then HLS, WebRTC, RTSP and relay to nginx-rtmp |
+| [`linux`](https://github.com/rcland12/holly-stream/tree/linux) | Any Linux machine with Docker (camera), plus a Linux server with an NVIDIA GPU (can be the same machine) | USB (UVC) webcam and its mic | On the server's GPU | SRT to the Holly server, then HLS, WebRTC, RTSP and relay to nginx-rtmp |
+| [`jetson`](https://github.com/rcland12/holly-stream/tree/jetson) | NVIDIA Jetson Nano 4GB (JetPack 4.6.x) | CSI camera (IMX219), optional USB mic | On the Jetson itself (DeepStream) | RTMP to its own nginx web player or to a remote nginx-rtmp server |
 
-## Key Features
-
-- **Real-time Object Detection**: YOLOv5/v11 models with 80 COCO dataset classes
-- **GPU Acceleration**: Optimized for NVIDIA Jetson and CUDA-enabled devices using TensorRT
-- **Flexible Streaming**: RTMP protocol for media players and HLS for web browsers
-- **Customizable Detection**: Configurable classes, confidence thresholds, and detection parameters
-- **Multiple Deployment Options**: Local, LAN, or remote web server streaming
-- **Docker Support**: Fully containerized with Docker Compose orchestration
-- **Multi-Platform**: Dedicated branches for Jetson, Linux, and Raspberry Pi architectures
-- **Custom Model Support**: Train and deploy your own YOLOv5 models
-
-## Use Cases
-
-- Home security and surveillance systems
-- Wildlife monitoring and detection
-- Smart doorbell and entry monitoring
-- Pet detection and tracking
-- Traffic and parking monitoring
-- Custom object detection applications
-
-## Requirements
-
-- Docker and Docker Compose
-- NVIDIA GPU (for GPU-accelerated inference)
-- Webcam or CSI camera
-- 4GB+ RAM (8GB recommended for Jetson devices)
-
-## Platform-Specific Branches
-
-This project maintains three platform-optimized branches, each tailored for specific hardware architectures:
-
-| Branch | Platform | Tested Hardware | Camera Support |
-|--------|----------|----------------|----------------|
-| [`jetson`](https://github.com/rcland12/holly-stream/tree/jetson) | NVIDIA Jetson | Jetson Nano (JetPack 4.6.4) | CSI (IMX219-160 8MP) |
-| [`linux`](https://github.com/rcland12/holly-stream/tree/linux) | Linux x86_64 | Ubuntu 22.04 + GTX 1060 6GB | USB (Logitech 1080p) |
-| [`raspbian`](https://github.com/rcland12/holly-stream/tree/raspbian) | Raspberry Pi | Raspberry Pi 4 (Debian Bookworm) | CSI (IMX519 16MP) |
-
-### Getting Started
-
-Clone the branch corresponding to your target platform:
-
-**For NVIDIA Jetson Devices:**
 ```bash
-# HTTPS
-git clone --branch jetson --depth 1 https://github.com/rcland12/holly-stream.git
-
-# SSH
-git clone --branch jetson --depth 1 git@github.com:rcland12/holly-stream.git
+git clone -b raspbian https://github.com/rcland12/holly-stream.git ~/dev/holly-stream   # Raspberry Pi camera, or the server
+git clone -b linux    https://github.com/rcland12/holly-stream.git ~/dev/holly-stream   # USB webcam on Linux, or the server
+git clone -b jetson   https://github.com/rcland12/holly-stream.git ~/dev/holly-stream   # Jetson Nano
 ```
 
-**For Linux Systems with NVIDIA GPU:**
-```bash
-# HTTPS
-git clone --branch linux --depth 1 https://github.com/rcland12/holly-stream.git
+Use `git@github.com:rcland12/holly-stream.git` to clone over SSH, then follow the README in that branch.
+`~/dev/holly-stream` is where the multi-camera scripts look for a clone by default.
 
-# SSH
-git clone --branch linux --depth 1 git@github.com:rcland12/holly-stream.git
+**Which one?** If you have a GPU server and inexpensive cameras, use `raspbian` or `linux`: the cameras only capture
+and encode, and one server runs detection for all of them. If a camera has to work on its own, with nothing else on
+the network, use `jetson`.
+
+## How it fits together
+
+There are two designs. Pi and Linux cameras send their video to a shared server that runs detection. A Jetson does
+everything on the device.
+
+```mermaid
+flowchart LR
+    subgraph Cameras["Cameras"]
+        Pi["Raspberry Pi<br/>(raspbian)<br/>libcamera → hardware H.264"]
+        Linux["Linux + USB webcam<br/>(linux)<br/>NVDEC/NVENC, VAAPI or x264"]
+    end
+
+    subgraph Server["Holly server (server/ in raspbian or linux)"]
+        Ingest["holly-ingest<br/>MediaMTX"]
+        Detector["holly-detector<br/>NVDEC → TensorRT YOLO →<br/>boxes → NVENC"]
+    end
+
+    Jetson["Jetson Nano<br/>(jetson)<br/>DeepStream: camera → TensorRT YOLO →<br/>boxes → hardware H.264"]
+
+    Pi -- "SRT" --> Ingest
+    Linux -- "SRT" --> Ingest
+    Ingest -- "DETECTION=true" --> Detector
+    Detector -- "annotated stream" --> Ingest
+    Ingest -- "relay" --> Nginx["nginx-rtmp<br/>website, HLS, recordings"]
+    Ingest -- "HLS / WebRTC / RTSP" --> Viewers["Browsers, VLC"]
+    Jetson -- "RTMP" --> Nginx
 ```
 
-**For Raspberry Pi:**
-```bash
-# HTTPS
-git clone --branch raspbian --depth 1 https://github.com/rcland12/holly-stream.git
+- **Holly server** (`raspbian` and `linux` branches): `holly-ingest` receives every camera over SRT, serves it over
+  HLS, WebRTC and RTSP, and can relay each one to an nginx-rtmp server. The optional `holly-detector` picks up
+  cameras that set `DETECTION=true`, runs YOLO on every frame with TensorRT, and publishes an annotated copy. If the
+  detector stops, those cameras fall back to their plain streams within seconds. Cameras can be added, moved or
+  removed without changing anything on the server. The `linux` branch's server also has the optional Santa hat
+  overlay.
+- **Raspberry Pi camera** (`raspbian`): a systemd service running a GStreamer pipeline. The Pi's hardware encoder
+  produces the H.264, and the Pi runs no Docker, Python or model.
+- **Linux camera** (`linux`): one Docker container running FFmpeg. It picks the best encoder the machine has; on
+  NVIDIA, decoding and encoding both stay on the GPU.
+- **Jetson** (`jetson`): a small C program that builds a DeepStream pipeline. Frames stay in GPU memory from the
+  camera through TensorRT to the hardware encoder.
 
-# SSH
-git clone --branch raspbian --depth 1 git@github.com:rcland12/holly-stream.git
-```
+## Performance
 
-After cloning, navigate to the branch README for detailed installation and deployment instructions specific to your platform.
+Each branch measured its own numbers; its README has the details.
 
-## Quick Start
+| Setup | Detection | Model | Result |
+|---|---|---|---|
+| Raspberry Pi 4 → server (GTX 1660) | Every frame | YOLO26m 480x640 | 30 fps, ~10 ms inference per camera; four cameras hold 30 fps on YOLO26s |
+| USB webcam on Linux → server (GTX 1660) | Every frame | YOLO26s 480x640 | 30 fps, ~5 ms inference; the camera uses ~0.4 of a CPU core |
+| Jetson Nano 4GB | Every frame | YOLO26n 640x384 | 28 fps (the camera's limit), 41 ms from capture to encoded frame |
 
-1. Clone the appropriate branch for your platform
-2. Create an `.env` file with your configuration
-3. Run `./run.sh` to start streaming
-4. View the stream via media player (VLC, OBS) or web browser
+The previous versions of every branch ran detection on only some of the frames: the Jetson on every 10th frame
+through Triton, the Pi on its own CPU at about 5 detections per second, and Linux on every 2nd to 6th frame through a
+Python frame loop.
 
-For comprehensive setup instructions, prerequisites, and configuration options, refer to the README in your selected branch.
+## Features
+
+- **Object detection on every frame**: Ultralytics YOLO26, YOLO11 and YOLOv8 models, compiled to TensorRT FP16 on
+  first start. Choose which classes to draw and the confidence threshold. The server steadies boxes between frames;
+  the Jetson can track objects.
+- **Custom models**: each branch documents collecting images from your own cameras, labeling, training and
+  exporting.
+- **Low-latency transport**: SRT retransmits packets lost on WiFi within a fixed latency window, and WebRTC viewing
+  has under a second of delay.
+- **Audio**: microphone audio encoded to AAC and kept in sync through detection.
+- **Self-healing**: pipelines restart after errors, stalls, dropped connections and unplugged cameras, and never
+  start on boot unless you started them.
+- **Many cameras, one command**: `run-all-cameras.sh`, `stop-all-cameras.sh` and `status-all-cameras.sh` control
+  every camera over SSH. The script is the same on every branch, so Pi, Linux and Jetson cameras share one list:
+
+  ```
+  rusty        ok: streaming  STREAM_NAME=hollystream6/hollyvideostream6 DETECTION=true
+  rustypi6     ok: streaming  STREAM_NAME=hollystream4/hollyvideostream4 DETECTION=true ROTATION=0
+  rustynano    ok: started
+  ```
+
+- **Extras**: training snapshots from live cameras, and a Santa hat overlay for the holidays (`linux` server).
+
+## Requirements at a glance
+
+- **Holly server** (`raspbian` or `linux`): Linux with Docker and the compose plugin. For detection: an NVIDIA GPU
+  (Turing / GTX 16xx or newer), driver 560+ and the NVIDIA Container Toolkit.
+- **Raspberry Pi camera** (`raspbian`): Raspberry Pi 4 or 5 on Raspberry Pi OS Bookworm or Trixie, a
+  libcamera-supported camera module, and optionally a USB microphone.
+- **Linux camera** (`linux`): Linux with Docker and a UVC webcam. An NVIDIA GPU (with the Container Toolkit) or an
+  Intel/AMD GPU is optional and is used for encoding.
+- **Jetson** (`jetson`): Jetson Nano 4GB with JetPack 4.6.x, a CSI camera, and Docker with the NVIDIA runtime as the
+  default.
+
+## Tested hardware
+
+| Branch | Tested on |
+|---|---|
+| `raspbian` | Raspberry Pi 4 with OV5647, IMX519 (Arducam 16MP) and fisheye camera modules; server with a GTX 1660 |
+| `linux` | Ubuntu 24.04 server with 4 cores and a GTX 1660, Logitech C922 Pro Stream Webcam |
+| `jetson` | Jetson Nano 4GB, JetPack 4.6 (L4T R32.7), IMX219 camera |
 
 ## Technologies
 
-- **Computer Vision**: OpenCV, YOLOv5/v11, TensorRT
-- **Deep Learning**: PyTorch, TorchVision, ONNX
-- **Inference**: NVIDIA Triton Inference Server
-- **Streaming**: FFmpeg, Nginx with RTMP module, HLS
-- **Containerization**: Docker, Docker Compose
+- **Detection**: Ultralytics YOLO, ONNX, NVIDIA TensorRT, PyTorch (GPU preprocessing), NVIDIA DeepStream (Jetson)
+- **Video**: GStreamer, FFmpeg and PyAV, NVDEC/NVENC, V4L2, libcamera
+- **Streaming**: SRT, MediaMTX, RTMP, HLS, WebRTC, RTSP, nginx-rtmp
+- **Deployment**: Docker and Docker Compose, systemd
+
+## Branches
+
+| Branch | Purpose |
+|---|---|
+| `master` | This overview, the license and the contributing guide |
+| `raspbian`, `linux`, `jetson` | Stable version for each platform; clone these |
+| `raspbian_develop`, `linux_develop`, `jetson_develop` | Work in progress, merged into the platform branch by pull request |
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on how to contribute to this project.
-
-### Areas for Improvement
-
-- Additional platform and architecture support
-- Streaming latency optimization (WebRTC, DASH, UDP protocols)
-- Enhanced deployment methods for non-Docker environments
-- Performance optimizations and code refactoring
-- Documentation improvements and tutorials
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how the branches are organized, how to test on
+each platform, and ideas for what to work on.
 
 ## License
 
-This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
+MIT. See [LICENSE](LICENSE).
 
 ## Support
 
-For issues, questions, or feature requests, please open an issue on the [GitHub Issues](https://github.com/rcland12/holly-stream/issues) page.
-
----
-
-**Note**: Each platform branch contains detailed documentation specific to that architecture. Always refer to the branch-specific README for installation steps, prerequisites, and deployment instructions.
+For bugs, questions or feature requests, open an issue on
+[GitHub Issues](https://github.com/rcland12/holly-stream/issues) and say which branch and hardware you are using.
