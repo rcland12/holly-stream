@@ -2,16 +2,16 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,linux
 
 # custom files
-*.m3u8
-stream-*.ts
-*.plan
-*.onnx
+# Models are exported with server/export_model.sh; TensorRT engines are built per GPU at startup
+server/models/*
+!server/models/.gitkeep
+server/data/
 *.pt
-data/
-old_triton/
-deepstream/
-triton/new_models/
-triton/repository/
+*.onnx
+*.engine
+*.plan
+# Local settings (see camera/camera.env.example, server/.env.example, .env.example)
+camera/camera.env
 
 ### Linux ###
 *~

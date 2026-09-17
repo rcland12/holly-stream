@@ -1,1066 +1,183 @@
 # Holly-Stream
 
-<img src="./app/images/logo.png" alt="Holly-Stream Logo" style="width: auto;">
+<img src="./assets/logo.png" alt="Holly-Stream Logo" style="width: auto;">
 
-A containerized live streaming application for Ubuntu servers featuring real-time object detection and multi-protocol streaming capabilities. Built with YOLOv8/YOLOv11, NVIDIA Triton Inference Server, and FFmpeg for high-performance GPU-accelerated video processing.
+USB webcams on any Linux machine, streamed to a server that draws real-time object detection on every frame with
+its NVIDIA GPU. The same branch runs the camera, the server, or both on one machine.
 
-## Table of Contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [System Requirements](#system-requirements)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Deployment Options](#deployment-options)
-- [Advanced Configuration](#advanced-configuration)
-- [Custom Model Training](#custom-model-training)
-- [Multi-Camera Setup](#multi-camera-setup)
-- [Troubleshooting](#troubleshooting)
-
-## Overview
-
-Holly-Stream transforms your Ubuntu server into a powerful streaming platform capable of:
-
-- **Real-time Object Detection**: Using YOLOv8/YOLOv11 models with NVIDIA Triton Inference Server and TensorRT optimization for maximum GPU performance
-- **Live Streaming**: Direct camera feed streaming with minimal latency and hardware-accelerated encoding
-- **Multi-Protocol Support**: Stream via RTMP to media players (VLC, OBS) or HLS for web browsers
-- **Flexible Deployment**: Local network, remote web server, or localhost streaming options
-- **Adaptive Performance**: Automatic frame-skip adjustment based on inference latency to maintain consistent streaming quality
-
-## Features
-
-### Core Capabilities
-
-- **Object Detection Pipeline**
-
-  - YOLOv8/YOLOv11 model inference with TensorRT optimization
-  - 80 COCO classes supported by default (customizable)
-  - Configurable confidence and IOU thresholds
-  - Real-time bounding box annotation
-  - Selective class filtering
-  - GPU-accelerated inference with NVIDIA Triton Inference Server
-
-- **Camera Support**
-
-  - USB webcams via V4L2
-  - Configurable resolution and framerate
-  - Audio capture from USB microphones or built-in sources via ALSA/PulseAudio
-  - Multiple camera device support
-
-- **Streaming Protocols**
-
-  - RTMP streaming for media players (VLC, OBS, Windows Media Player)
-  - HLS streaming for web browsers
-  - Configurable quality presets (ultra/high/medium/low/fast)
-  - Hardware-accelerated H.264 encoding (NVENC when available)
-  - Low-latency zero-latency tuning options
-
-- **Additional Features**
-  - Santa Hat Plugin (novelty overlay for detected objects)
-  - Multi-camera orchestration and remote management
-  - Data collection utility for custom model training
-  - Automatic adaptive inference performance
-  - S3 model repository support for centralized model management
-  - Docker containerized for easy deployment
-
-## Architecture
-
-### System Overview
+> **Use the `linux` branch.** Each branch of this repository is a different pipeline for different hardware
+> (`raspbian`, `jetson`, `linux`); this README describes `linux`. The `*_develop` branches are work in progress. The
+> commands below clone `linux` directly; in an existing clone, run `git checkout linux`.
 
 ```mermaid
-graph TB
-    subgraph UbuntuServer["Ubuntu Server Host"]
-        Camera["Camera Device<br/>/dev/video0"]
-
-        subgraph DockerEnv["Docker Environment"]
-            subgraph AppContainer["App Container"]
-                OpenCV["OpenCV<br/>Frame Capture"]
-                Detector["Detection Logic"]
-                Annotator["Frame Annotation"]
-                FFmpeg["FFmpeg Encoder<br/>H.264/RTMP"]
-            end
-
-            subgraph TritonContainer["Triton Container"]
-                Preprocess["Preprocess Model<br/>Letterbox + Normalize"]
-                YOLOModel["YOLOv8/v11 TensorRT<br/>GPU Detection"]
-                Postprocess["Postprocess Model<br/>NMS + Filtering"]
-            end
-
-            subgraph NginxContainer["Nginx Container"]
-                RTMPServer["RTMP Server<br/>Port 1935"]
-                HLSConverter["HLS Converter<br/>3s segments"]
-                WebServer["HTTP Server<br/>Port 8080"]
-            end
-        end
+flowchart LR
+    subgraph Cam["Linux camera (camera/)"]
+        USB["USB webcam<br/>MJPEG"] --> Dec["NVDEC JPEG decode<br/>(or CPU)"]
+        Dec --> Enc["NVENC / VAAPI / x264<br/>H.264"]
+        Mic["webcam mic → AAC"] --> TS["MPEG-TS"]
+        Enc --> TS
     end
 
-    subgraph Clients["Client Devices"]
-        MediaPlayer["Media Players<br/>VLC, OBS, WMP"]
-        WebBrowser["Web Browsers<br/>Video.js Player"]
+    subgraph Server["Server (server/)"]
+        Ingest["holly-ingest<br/>(MediaMTX)"]
+        Detector["holly-detector (optional)<br/>NVDEC → TensorRT YOLO →<br/>boxes → NVENC"]
     end
 
-    Camera -->|Video Feed| OpenCV
-    OpenCV -->|Raw Frames| Detector
-    Detector <-->|gRPC| Preprocess
-    Preprocess --> YOLOModel
-    YOLOModel --> Postprocess
-    Postprocess -->|Detections| Detector
-    Detector -->|Annotated Frames| Annotator
-    Annotator -->|RGB Frames| FFmpeg
-    FFmpeg -->|RTMP Stream| RTMPServer
-    RTMPServer -->|HLS Segments| HLSConverter
-    HLSConverter --> WebServer
-    RTMPServer -.->|Direct RTMP| MediaPlayer
-    WebServer -->|HTTP/HLS| WebBrowser
-
-    style AppContainer fill:#e1f5ff
-    style TritonContainer fill:#fff4e1
-    style NginxContainer fill:#e8f5e9
-    style UbuntuServer fill:#f5f5f5
+    TS -- "SRT, stream name" --> Ingest
+    Ingest -- "cameras with DETECTION=true" --> Detector
+    Detector -- "annotated/&lt;name&gt;" --> Ingest
+    Ingest -- "relay (optional)" --> Out["nginx-rtmp or any RTMP server"]
+    Ingest -- "HLS / WebRTC / RTSP" --> Viewers["Browsers, VLC"]
 ```
 
-### Data Flow
+## How it works
 
-**Object Detection Mode:**
+**Each camera** is one container, `holly-camera`, running FFmpeg. It captures the webcam's MJPEG, decodes and
+encodes it as H.264 on the best hardware the machine has, encodes the webcam's microphone to AAC, and sends both
+to the server over SRT. Its settings live in `camera/camera.env`: the server's address, a **stream name**, and
+whether it wants **detection**.
 
-1. Camera captures frame at configured FPS (e.g., 30 FPS)
-2. Adaptive frame skip (1-6x) sends frames to Triton Inference Server based on GPU performance
-3. Triton pipeline: Preprocess → Detection (TensorRT) → Postprocess (NMS)
-4. Detection results returned to application via gRPC
-5. Frame annotated with bounding boxes and labels
-6. All frames encoded with FFmpeg and streamed via RTMP
-7. Nginx receives RTMP stream and converts to HLS
-8. Clients connect via RTMP (direct) or HTTP/HLS (web browsers)
+**The server** runs up to two containers:
 
-**Direct Streaming Mode:**
+- **`holly-ingest`** (MediaMTX, always on, no GPU) receives every camera on one SRT port and serves each one over
+  HLS, WebRTC and RTSP. If `RELAY_URL` is set, it relays every camera to another server (e.g. nginx-rtmp for a
+  website and recordings) under its stream name.
+- **`holly-detector`** (optional, NVIDIA GPU) picks up cameras with `DETECTION=true`. For each one it decodes on
+  the GPU, runs YOLO with TensorRT on every frame, draws the boxes, re-encodes, and publishes the result to the
+  ingest as `annotated/<stream name>`.
 
-1. Camera feed captured directly with OpenCV
-2. Frames piped to FFmpeg encoder
-3. H.264 encoding with minimal latency (no detection overhead)
-4. RTMP output to nginx server
-5. Lower CPU/GPU usage for basic streaming needs
+For a camera with detection on, the relay sends the annotated stream; for the others, the plain stream. If the
+detector is stopped or crashes, detection cameras fall back to plain within seconds and switch back when it
+returns, so a relayed stream never goes away because of detection.
 
-## System Requirements
+The server is the same one the `raspbian` branch uses, so Raspberry Pi, Jetson and Linux cameras can all stream to
+it. Nothing on the server changes when cameras are added, moved or removed.
 
-### Hardware
+## Why it is built this way
 
-- **Server**: Ubuntu 20.04+ capable machine
-- **Memory**: 4GB RAM minimum (8GB+ recommended for object detection)
-- **Camera**: USB webcam, 720p minimum, 1080p recommended
-- **Storage**: 10GB+ free disk space
-- **Network**: Ethernet or WiFi connection
+The previous version of this branch ran everything in one Python process per camera: OpenCV captured and decoded
+the webcam, each frame was sent to Triton over gRPC, boxes were drawn on a BGR copy, and raw frames were piped to
+an FFmpeg x264 encoder pushing RTMP to nginx. Every frame crossed the CPU several times, detection ran on a
+subset of frames to keep up, and a slow inference or network hiccup backed up the whole stream.
 
-### Software
+| | Previous (OpenCV + Triton + x264) | Now |
+|---|---|---|
+| Video path | Python frame loop, raw BGR piped to x264 | FFmpeg only; on NVIDIA the pixels never reach the CPU |
+| Detection | Every 2nd-6th frame, adaptive | Every frame, 30 per second |
+| Transport | RTMP (TCP) to nginx | SRT (UDP with retransmission) to MediaMTX |
+| Viewing | nginx HLS | HLS, WebRTC (under a second), RTSP, plus relay to nginx |
+| Server side | Triton per camera machine | One shared ingest and detector for every camera |
 
-- **Operating System**: Ubuntu 20.04+ (Linux)
-- **Docker**: Version 20.10 or later with compose plugin
-- **FFmpeg**: Version 4.0 or later (included in Docker container)
+Measured on a 4-core server with a GTX 1660 and a Logitech C922 at 1280x720@30:
 
-### Optional Requirements
+- Camera, NVIDIA path (NVDEC JPEG decode → range conversion on the GPU → NVENC), with audio: about 0.4 of a core,
+  0.45 at 1920x1080. The same camera on x264: about 1-1.25 cores.
+- Detector, YOLO26s: 30 fps, ~5 ms inference, ~10 ms per frame including drawing and encoding.
 
-- **For Object Detection (GPU-Accelerated)**:
-  - NVIDIA CUDA-enabled GPU (GTX 1060 6GB or better recommended)
-  - CUDA Version 11.8+ (handled by Docker container)
-  - GPU Memory: 2GB VRAM minimum (4GB+ recommended)
-  - nvidia-docker2 runtime installed
-- **For Custom Model Training**: CUDA-enabled machine for training (not required for inference)
-- **For S3 Model Repository**: AWS account with S3 access
+Design choices:
 
-**Note**: Object detection can be disabled for basic streaming without a GPU. CPU-only inference is not recommended due to performance limitations.
+- **Hardware first, chosen at start.** `ENCODER=auto` tries NVENC, then VAAPI (Intel/AMD), then falls back to x264.
+  `run.sh` only gives the container the GPU when Docker's NVIDIA runtime is installed.
+- **Limited range, flagged.** Webcams send full-range JPEG. The camera converts to the limited range that streams
+  and players expect and tags the colour description, and the detector carries it through, so dark and bright areas
+  are not crushed.
+- **A clean start.** The first 3 seconds, captured while the encoder is still starting, are dropped. A burst of
+  startup backlog puts audio and video on different clocks at the ingest, which RTSP readers such as the detector
+  correct with a timestamp jump. The detector also drops audio that jumps backwards rather than restarting.
+- **Rotation happens on the camera.** Unlike a Pi, a Linux machine flips a frame for almost nothing, and doing it
+  there means the plain and annotated streams match.
+- **A watchdog.** If no frame is sent for `WATCHDOG_SECONDS`, the camera exits and Docker restarts it, which also
+  covers a webcam that was unplugged and plugged back in.
 
-## Installation
+## Repository layout
 
-### 1. Clone Repository
-
-```bash
-git clone https://github.com/yourusername/holly-stream.git
-cd holly-stream
+```
+run.sh, stop.sh, status.sh  start, stop or check the camera on this machine
+run-all-cameras.sh          start every camera listed in .env over SSH (also stop-all-, status-all-cameras.sh)
+all-cameras.sh              what the *-all-cameras.sh scripts run (the same on every branch)
+.env.example                the camera list for the *-all-cameras.sh scripts
+camera/                     camera side
+  camera.env.example        settings template, copied to camera/camera.env
+  holly-camera.sh           the FFmpeg pipeline, hardware detection and watchdog
+  compose.yml, Dockerfile   the holly-camera container
+server/                     server side
+  compose.yml               holly-ingest, plus holly-detector under the "detection" profile
+  .env.example              server settings
+  mediamtx.yml, relay.sh    ingest configuration and relay
+  status.sh                 connected cameras, detection and relay state
+  Dockerfile, holly/        detector: supervisor, per-camera pipeline, TensorRT engine, overlay
+  export_model.sh           exports a YOLO model to ONNX in server/models/
+docker-push.sh              builds and pushes the camera and detector images
 ```
 
-### 2. Install NVIDIA Docker Runtime (for GPU support)
+## Server setup
 
-If using object detection with GPU:
+**Requirements:** Linux with Docker and the compose plugin. For detection: an NVIDIA GPU (Turing / GTX 16xx or
+newer), driver 560+, the NVIDIA Container Toolkit, and Python with `pip install ultralytics onnx onnxslim` to
+export models.
 
 ```bash
-# Add NVIDIA Docker repository
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
-curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+git clone -b linux https://github.com/rcland12/holly-stream.git
+cd holly-stream/server
+cp .env.example .env         # set SERVER_LAN_IP, and RELAY_URL if you relay to another server
 
-# Install nvidia-docker2
-sudo apt-get update
-sudo apt-get install -y nvidia-docker2
+# Plain streaming only
+docker compose up -d
 
-# Restart Docker
-sudo systemctl restart docker
+# With object detection
+./export_model.sh yolo26m.pt
+docker compose --profile detection up -d
+docker compose logs -f holly-detector
 ```
 
-### 3. Pull Docker Images
+With detection, the first start builds a TensorRT engine for the GPU (3-5 minutes), cached in
+`server/models/engines/`. The detector is ready when it logs `Watching http://holly-ingest:9997 for cameras`.
+Without a GPU, skip the profile; cameras with `DETECTION=true` then simply stream plain.
 
-Pull the pre-built container images:
+### In an existing compose stack
 
-```bash
-# For object detection (GPU required)
-docker pull rcland12/detection-stream:linux-triton-latest
+Copy the two services from `server/compose.yml` into your stack, point the volume paths at this repository,
+and set `RELAY_URL` on `holly-ingest`. If the relay target is a container in the same stack, use its service name,
+e.g. `rtmp://nginx:1935/{name}`, with nginx-rtmp `application` blocks and stream keys matching your stream names.
+Leave the ingest's HLS port unpublished if something else serves HLS on 8888. The detector reads its settings from
+any env file with the variables in `server/.env.example`.
 
-# For nginx streaming server
-docker pull rcland12/detection-stream:nginx-latest
+## Camera setup
 
-# For main application
-docker pull rcland12/detection-stream:linux-latest
-```
-
-### 4. Make Scripts Executable
-
-```bash
-chmod +x ./run.sh ./stop.sh
-```
-
-### 5. Camera Setup
-
-**For USB Webcam:**
-
-- Connect camera to USB port
-- Verify device: `ls /dev/video*`
-- Note device number (usually `/dev/video0`)
-- Test camera:
-  ```bash
-  ffmpeg -f v4l2 -i /dev/video0 -frames 1 test.jpg
-  ```
-
-**For Multiple Cameras:**
-
-- List all video devices: `v4l2-ctl --list-devices`
-- Each camera will have a different index (video0, video1, etc.)
-
-## Configuration
-
-### Environment Variables
-
-Create a `.env` file in the project root directory. This file controls all operational parameters.
-
-**Required Variables:**
+**Requirements:** Linux with Docker and the compose plugin, and a USB (UVC) webcam. For hardware encoding, either
+an NVIDIA GPU with the NVIDIA Container Toolkit, or an Intel/AMD GPU with `/dev/dri`. Without either, the camera
+encodes on the CPU.
 
 ```bash
-# Operation Mode (required)
-OBJECT_DETECTION=False  # True/False - enables/disables object detection
-```
-
-**Camera Configuration:**
-
-```bash
-# Camera Settings
-CAMERA_WIDTH=1280           # Resolution width in pixels
-CAMERA_HEIGHT=720           # Resolution height in pixels
-CAMERA_FPS=30               # Frames per second
-CAMERA_INDEX=0              # USB camera device index (/dev/videoX)
-```
-
-**Streaming Configuration:**
-
-```bash
-# RTMP Stream Settings
-STREAM_IP=127.0.0.1         # Target server IP address
-STREAM_PORT=1935            # RTMP port (default: 1935)
-STREAM_APPLICATION=live     # RTMP application name
-STREAM_KEY=stream           # RTMP stream key
-STREAM_QUALITY=fast         # Encoding preset (ultra/high/medium/low/fast)
-```
-
-**Audio Configuration:**
-
-```bash
-# Audio Settings
-AUDIO_ENABLED=True          # Include audio in stream (True/False)
-AUDIO_DEVICE=hw:Webcam,0    # ALSA device or pulse:default for PulseAudio
-```
-
-**Object Detection Settings:**
-
-```bash
-# Model Configuration
-TRITON_URL=grpc://holly-stream-triton:8001  # Triton server address
-MODEL_NAME=yolo11                            # Model identifier in Triton
-MODEL_DIMS=(640, 640)                        # Model input dimensions (tuple)
-MODEL_REPOSITORY=/root/app/triton            # Path to Triton model repository
-CLASSES=[]                                   # Filter specific classes (empty = all 80)
-
-# AWS S3 Model Repository (optional)
-AWS_ACCESS_KEY_ID=your_key_id
-AWS_SECRET_ACCESS_KEY=your_secret_key
-AWS_DEFAULT_REGION=us-east-1
-```
-
-**Special Features:**
-
-```bash
-# Santa Hat Plugin
-SANTA_HAT_PLUGIN=False      # Overlay santa hat on highest confidence detection
-```
-
-### Configuration Examples
-
-**Example 1: Local Object Detection**
-
-```bash
-OBJECT_DETECTION=True
-STREAM_IP=127.0.0.1
-STREAM_PORT=1935
-STREAM_APPLICATION=live
-STREAM_KEY=stream
-CAMERA_WIDTH=1280
-CAMERA_HEIGHT=720
-CAMERA_FPS=30
-CLASSES=[0, 16]  # Detect only persons and dogs
-```
-
-**Example 2: Direct Streaming to Remote Server**
-
-```bash
-OBJECT_DETECTION=False
-STREAM_IP=203.0.113.10  # Public IP
-STREAM_PORT=1935
-STREAM_APPLICATION=live
-STREAM_KEY=mySecureKey123
-CAMERA_WIDTH=1920
-CAMERA_HEIGHT=1080
-CAMERA_FPS=30
-AUDIO_ENABLED=True
-```
-
-**Example 3: High-Performance GPU Detection**
-
-```bash
-OBJECT_DETECTION=True
-STREAM_IP=192.168.1.100  # LAN device
-STREAM_PORT=1935
-STREAM_KEY=stream
-CAMERA_WIDTH=1280
-CAMERA_HEIGHT=720
-CAMERA_FPS=30
-STREAM_QUALITY=high
-CLASSES=[0, 1, 2, 3, 5, 7]  # Vehicles and people
-```
-
-## Deployment Options
-
-### Option 1: Local Streaming to Media Player
-
-Stream to VLC, OBS, or other RTMP-compatible software on the same device or local network.
-
-**Step 1: Start Nginx Server**
-
-```bash
-docker compose up -d nginx-stream
-```
-
-**Step 2: Configure Environment**
-
-Update `.env`:
-
-```bash
-OBJECT_DETECTION=True  # or False for direct streaming
-STREAM_IP=127.0.0.1    # for same device, or LAN IP for other devices
-STREAM_PORT=1935
-STREAM_APPLICATION=live
-STREAM_KEY=stream
-```
-
-**Step 3: Start Streaming**
-
-```bash
+git clone -b linux https://github.com/rcland12/holly-stream.git ~/dev/holly-stream
+cd ~/dev/holly-stream
+cp camera/camera.env.example camera/camera.env
+nano camera/camera.env         # SERVER_HOST, STREAM_NAME, DETECTION
 ./run.sh
 ```
 
-**Step 4: Connect Media Player**
+The camera can run on the server itself: set `SERVER_HOST=127.0.0.1`. **It never starts on its own**, not on
+install and not on boot: it streams from `run.sh` until `stop.sh`, restarting itself after errors in between.
+The first start builds the image (a minute or two).
 
-Open network stream in your media player:
+`docker logs holly-camera` shows what it picked:
 
 ```
-rtmp://<SERVER_IP>:1935/live/stream
+[holly-camera] Streaming C922 Pro Stream Webcam /dev/video0 1280x720@30 mjpeg, encoder=nvenc 4000k, rotation=0
+hflip=0, audio=plughw:CARD=Webcam,DEV=0, detection=1 -> srt://127.0.0.1:8890 as hollystream6/hollyvideostream6
 ```
 
-- **Same device**: `rtmp://localhost:1935/live/stream`
-- **LAN device**: `rtmp://192.168.1.50:1935/live/stream` (use server's IP)
+### Starting and stopping cameras
 
-**Step 5: Stop Streaming**
+On a camera: `./run.sh`, `./stop.sh` and `./status.sh`.
+
+For all cameras at once, from any machine with SSH keys for them (e.g. the server, or wherever a phone shortcut
+connects to), list them in `.env` in the repository root:
 
 ```bash
-./stop.sh
+cp .env.example .env
+nano .env        # CAMERA_HOSTNAMES=(rusty rustypi2 rustynano)
 ```
-
-To stop nginx:
-
-```bash
-docker compose down
-```
-
-### Option 2: Web Browser Streaming (Local Network)
-
-Stream to web browsers using HLS protocol.
-
-**Step 1: Start Nginx Web Server**
-
-```bash
-docker compose up -d nginx-web
-```
-
-**Step 2: Configure Environment**
-
-Update `.env`:
-
-```bash
-OBJECT_DETECTION=True
-STREAM_IP=127.0.0.1  # or LAN IP of device running nginx-web
-STREAM_PORT=1935
-STREAM_APPLICATION=live
-STREAM_KEY=stream
-```
-
-**Step 3: Start Streaming**
-
-On the Ubuntu server:
-
-```bash
-./run.sh
-```
-
-**Step 4: Access Web Interface**
-
-Open browser and navigate to:
-
-```
-http://localhost:8080/index.html
-```
-
-Or from another device on your network:
-
-```
-http://<SERVER_IP>:8080/index.html
-```
-
-**Step 5: Stop Services**
-
-On Ubuntu server:
-
-```bash
-./stop.sh
-```
-
-On client machine:
-
-```bash
-docker compose down
-```
-
-### Option 3: Remote Web Server Streaming
-
-Stream to a public web server accessible over the internet.
-
-**Prerequisites:**
-
-- Web server with Docker installed
-- Domain name or public IP address
-- Port 1935 open in firewall for RTMP
-
-**Step 1: Clone Repository on Web Server**
-
-```bash
-ssh user@your-server.com
-git clone https://github.com/yourusername/holly-stream.git
-cd holly-stream
-```
-
-**Step 2: Configure Nginx for Remote Access**
-
-Edit `nginx/nginx-web/nginx.conf`:
-
-**Line 27** - Add your domain:
-
-```nginx
-server_name your-domain.com;  # Replace localhost
-```
-
-**Lines 40-43** - Whitelist your home IP:
-
-```nginx
-# Find your IP at https://whatismyipaddress.com/
-allow publish 203.0.113.45;  # Your home IP address
-allow publish 127.0.0.0/8;   # Keep for local testing
-```
-
-Edit `nginx/stream/index.html`:
-
-**Replace all instances** of `http://localhost` with your domain:
-
-```html
-<!-- Before -->
-src: 'http://localhost/hls/stream.m3u8'
-
-<!-- After -->
-src: 'https://your-domain.com/hls/stream.m3u8'
-```
-
-**Line 20** - Replace stream key for security:
-
-```html
-<!-- Before -->
-src: 'http://localhost/hls/stream.m3u8'
-
-<!-- After -->
-src: 'https://your-domain.com/hls/mySecureKey123.m3u8'
-```
-
-**Step 3: Start Nginx on Web Server**
-
-```bash
-docker compose up -d nginx-web
-```
-
-**Step 4: Configure Ubuntu Server Environment**
-
-On Ubuntu server, update `.env`:
-
-```bash
-OBJECT_DETECTION=True
-STREAM_IP=203.0.113.10  # Your web server's public IP
-STREAM_PORT=1935
-STREAM_APPLICATION=live
-STREAM_KEY=mySecureKey123  # Match the key in index.html
-```
-
-**Step 5: Start Streaming from Ubuntu Server**
-
-```bash
-./run.sh
-```
-
-**Step 6: Access Stream**
-
-Navigate to:
-
-```
-https://your-domain.com/index.html
-```
-
-**Security Notes:**
-
-- Use HTTPS with SSL certificates (Let's Encrypt recommended)
-- Keep stream keys private
-- Whitelist only trusted IP addresses
-- Consider additional authentication for production
-
-## Custom Model Training
-
-Train a custom YOLOv8/YOLOv11 model for specific objects (e.g., detect your pet, specific vehicles, custom objects).
-
-**Important**: TensorRT model files (`.plan`) are machine-specific. A model converted on one GPU architecture will not work on another. You must convert models on your target deployment hardware.
-
-### Step 1: Data Collection
-
-Use the provided data collection utility:
-
-```bash
-python3 app/collect_data.py
-```
-
-This will capture images at intervals for dataset creation. Collect 200-500 images per class minimum.
-
-### Step 2: Data Annotation
-
-Annotate images in YOLO format. Recommended tools:
-
-- [Roboflow](https://roboflow.com/) (online, user-friendly)
-- [LabelImg](https://github.com/tzutalin/labelImg) (offline)
-
-**Dataset Split:**
-
-- Training: 70-80%
-- Validation: 20-30%
-- Testing: Optional 10% holdout
-
-### Step 3: Training Environment Setup
-
-On a CUDA-enabled machine (local or cloud):
-
-```bash
-pip install ultralytics torch torchvision
-```
-
-### Step 4: Train Model
-
-Create a training script `train.py`:
-
-```python
-from ultralytics import YOLO
-
-# Load pre-trained model
-model = YOLO('yolov8n.pt')  # nano model for speed
-
-# Train
-model.train(
-    data='data.yaml',        # Path to dataset configuration
-    epochs=100,              # Training epochs (increase for better accuracy)
-    batch=16,                # Batch size (adjust for GPU memory)
-    imgsz=640,               # Image size
-    device=0,                # GPU device (0 for first GPU, 'cpu' for CPU)
-    optimizer='AdamW',       # Optimizer
-    patience=50,             # Early stopping patience
-    save=True,               # Save checkpoints
-    project='runs/detect',   # Output directory
-    name='custom_model'      # Experiment name
-)
-```
-
-Create `data.yaml`:
-
-```yaml
-# Paths (use absolute paths)
-train: /home/user/holly-stream/datasets/train/images
-val: /home/user/holly-stream/datasets/val/images
-
-# Classes
-nc: 2  # Number of classes
-names: ["my_dog", "my_cat"]  # Class names
-```
-
-Run training:
-
-```bash
-python3 train.py
-```
-
-Training time varies: 2-6 hours on RTX 3060, 12-24+ hours on CPU.
-
-### Step 5: Export to TensorRT
-
-After training completes:
-
-```python
-from ultralytics import YOLO
-
-# Load best model
-model = YOLO('runs/detect/custom_model/weights/best.pt')
-
-# Export to ONNX first
-model.export(
-    format='onnx',      # ONNX format
-    half=True,          # FP16 quantization (smaller, faster)
-    simplify=True,      # Simplify graph
-    opset=12            # ONNX opset version
-)
-```
-
-Convert ONNX to TensorRT on your Ubuntu server:
-
-```bash
-docker run -it --rm --gpus all -v ./runs/detect/custom_model/weights:/models \
-    nvcr.io/nvidia/tensorrt:23.12-py3 \
-    trtexec --onnx=/models/best.onnx \
-            --saveEngine=/models/best.plan \
-            --fp16 \
-            --inputIOFormats=fp16:chw \
-            --outputIOFormats=fp16:chw
-```
-
-This process takes approximately 2-5 minutes.
-
-### Step 6: Deploy Custom Model
-
-**Copy model to Triton repository:**
-
-```bash
-cp runs/detect/custom_model/weights/best.plan triton/object_detection/1/model.plan
-```
-
-**Update Triton configuration** (if model dimensions differ):
-
-Edit `triton/object_detection/config.pbtxt`:
-
-```protobuf
-input [
-  {
-    name: "images"
-    data_type: TYPE_FP16
-    dims: [ 1, 3, 640, 640 ]  # Match your model input
-  }
-]
-output [
-  {
-    name: "output0"
-    data_type: TYPE_FP16
-    dims: [ 1, 84, 8400 ]  # Verify with model.info()
-  }
-]
-```
-
-**Update class labels:**
-
-Edit `triton/yolo11/labels.txt`:
-
-```
-my_dog
-my_cat
-```
-
-**Update environment variables:**
-
-```bash
-MODEL_NAME=yolo11
-MODEL_DIMS=(640, 640)  # Match training imgsz
-CLASSES=[0, 1]         # All custom classes
-```
-
-### Step 7: Test Custom Model
-
-```bash
-./run.sh
-```
-
-Monitor logs for inference errors. Adjust confidence threshold as needed in the code or via additional configuration.
-
-## Advanced Configuration
-
-### Supported Object Classes
-
-The default YOLOv8/YOLOv11 model detects 80 COCO classes. To detect all classes, remove the `CLASSES` variable from `.env`. To filter specific classes:
-
-```bash
-CLASSES=[0, 16, 17, 54, 67]  # person, dog, horse, donut, cell phone
-```
-
-**Available Classes:**
-
-| Index | Class         | Index | Class          | Index | Class        | Index | Class        |
-| ----- | ------------- | ----- | -------------- | ----- | ------------ | ----- | ------------ |
-| 0     | person        | 20    | elephant       | 40    | wine glass   | 60    | dining table |
-| 1     | bicycle       | 21    | bear           | 41    | cup          | 61    | toilet       |
-| 2     | car           | 22    | zebra          | 42    | fork         | 62    | tv           |
-| 3     | motorcycle    | 23    | giraffe        | 43    | knife        | 63    | laptop       |
-| 4     | airplane      | 24    | backpack       | 44    | spoon        | 64    | mouse        |
-| 5     | bus           | 25    | umbrella       | 45    | bowl         | 65    | remote       |
-| 6     | train         | 26    | handbag        | 46    | banana       | 66    | keyboard     |
-| 7     | truck         | 27    | tie            | 47    | apple        | 67    | cell phone   |
-| 8     | boat          | 28    | suitcase       | 48    | sandwich     | 68    | microwave    |
-| 9     | traffic light | 29    | frisbee        | 49    | orange       | 69    | oven         |
-| 10    | fire hydrant  | 30    | skis           | 50    | broccoli     | 70    | toaster      |
-| 11    | stop sign     | 31    | snowboard      | 51    | carrot       | 71    | sink         |
-| 12    | parking meter | 32    | sports ball    | 52    | hot dog      | 72    | refrigerator |
-| 13    | bench         | 33    | kite           | 53    | pizza        | 73    | book         |
-| 14    | bird          | 34    | baseball bat   | 54    | donut        | 74    | clock        |
-| 15    | cat           | 35    | baseball glove | 55    | cake         | 75    | vase         |
-| 16    | dog           | 36    | skateboard     | 56    | chair        | 76    | scissors     |
-| 17    | horse         | 37    | surfboard      | 57    | couch        | 77    | teddy bear   |
-| 18    | sheep         | 38    | tennis racket  | 58    | potted plant | 78    | hair dryer   |
-| 19    | cow           | 39    | bottle         | 59    | bed          | 79    | toothbrush   |
-
-### Video Quality Presets
-
-Stream quality is configured via `STREAM_QUALITY` in `.env`:
-
-```bash
-# Ultra Quality (for powerful GPUs)
-STREAM_QUALITY=ultra  # High bitrate, best quality, slower encoding
-
-# High Quality
-STREAM_QUALITY=high   # Balanced quality and performance
-
-# Medium Quality (default)
-STREAM_QUALITY=medium # Good quality, fast encoding
-
-# Low Quality
-STREAM_QUALITY=low    # Lowest latency, minimum bandwidth
-
-# Fast (lowest latency)
-STREAM_QUALITY=fast   # Optimized for real-time streaming
-```
-
-### Network Configuration
-
-**Finding IP Addresses:**
-
-- **Ubuntu Server** (Linux):
-
-  ```bash
-  ip a
-  # Look for inet under eth0 (Ethernet) or wlan0 (WiFi)
-  # Example: inet 192.168.1.50/24
-  ```
-
-- **Windows Client**:
-  ```powershell
-  ipconfig
-  # Look for IPv4 Address
-  ```
-
-**Port Forwarding for Remote Access:**
-
-If streaming to remote server over internet:
-
-1. Configure router to forward port 1935 to server IP
-2. Set server firewall to allow inbound TCP 1935
-3. Use public IP or domain name in `STREAM_IP`
-
-```bash
-# Open firewall port on Ubuntu
-sudo ufw allow 1935/tcp
-sudo ufw status
-```
-
-### S3 Model Repository
-
-To host Triton models in AWS S3:
-
-```bash
-# In .env
-MODEL_REPOSITORY=s3://my-bucket/triton-models/
-AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-AWS_DEFAULT_REGION=us-west-2
-```
-
-Ensure S3 bucket structure matches:
-
-```
-my-bucket/
-└── triton-models/
-    ├── preprocess/
-    ├── object_detection/
-    ├── postprocess/
-    └── yolo11/
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue: Camera not detected**
-
-```bash
-# Check camera connection
-ls -l /dev/video*
-
-# Test camera
-ffmpeg -f v4l2 -i /dev/video0 -frames 1 test.jpg
-```
-
-**Solution:**
-
-- Ensure camera is properly connected
-- Update `CAMERA_INDEX` in `.env` to match your device
-- Try different USB ports
-- Check USB permissions: `sudo chmod 666 /dev/video0`
-
----
-
-**Issue: Triton container fails health check**
-
-```bash
-# Check Triton logs
-docker logs holly-stream-triton
-
-# Test Triton endpoint
-curl http://localhost:8000/v2/health/ready
-```
-
-**Solution:**
-
-- Verify model files exist in `triton/object_detection/1/model.plan`
-- Check `config.pbtxt` for correct input/output dimensions
-- Ensure sufficient GPU memory (4GB+ VRAM)
-- Verify model was converted on the same GPU architecture
-- Check nvidia-docker runtime is installed
-
----
-
-**Issue: FFmpeg encoding errors**
-
-```bash
-# Check app container logs
-docker logs holly-stream-app
-
-# Look for FFmpeg errors
-docker logs holly-stream-app 2>&1 | grep -i error
-```
-
-**Solution:**
-
-- Verify `STREAM_IP` and `STREAM_PORT` are correct
-- Ensure nginx is running and accepting connections
-- Check network connectivity between containers
-- Try lower resolution or FPS settings
-
----
-
-**Issue: High CPU usage or low FPS**
-
-**Solutions:**
-
-- Reduce `CAMERA_FPS` to 15 or 20
-- Lower `CAMERA_WIDTH` and `CAMERA_HEIGHT` to 640x480
-- Disable object detection: `OBJECT_DETECTION=False`
-- Use faster encoding preset: `STREAM_QUALITY=fast`
-- Enable hardware encoding if available (NVENC)
-
----
-
-**Issue: CUDA out of memory errors**
-
-```bash
-# Check GPU memory usage
-nvidia-smi
-```
-
-**Solutions:**
-
-- Close other GPU applications
-- Use smaller model (YOLOv8n instead of YOLOv8m/l/x)
-- Reduce camera resolution
-- Check for memory leaks in logs
-
----
-
-**Issue: Stream not connecting**
-
-**For localhost:**
-
-```bash
-# Check if port is available
-sudo netstat -tulpn | grep 1935
-```
-
-**For remote streaming:**
-
-```bash
-# Verify firewall rules
-sudo ufw status
-sudo ufw allow 1935/tcp
-```
-
-**Solution:**
-
-- Ensure nginx container is running: `docker ps`
-- Verify correct IP and port in `.env`
-- Check firewall/router settings
-- Test connectivity: `telnet <STREAM_IP> 1935`
-
----
-
-**Issue: No video in web browser**
-
-```bash
-# Check nginx HLS output
-docker exec holly-stream-nginx-web-1 ls -la /var/www/html/stream/hls/
-
-# Should see .m3u8 and .ts files
-```
-
-**Solution:**
-
-- Verify nginx-web container is running
-- Check browser console for JavaScript errors
-- Ensure `STREAM_KEY` matches filename in HLS directory
-- Clear browser cache
-- Try different browser (Chrome, Firefox)
-
----
-
-**Issue: Audio not working**
-
-```bash
-# List audio devices
-arecord -l
-
-# Test audio capture
-arecord -D hw:Webcam,0 -d 5 test.wav
-```
-
-**Solution:**
-
-- Update `AUDIO_DEVICE` with correct hardware identifier
-- Check audio permissions
-- Try PulseAudio: `AUDIO_DEVICE=pulse:default`
-- Verify microphone is not muted
-
----
-
-**Issue: Docker permission errors**
-
-```bash
-# Add user to docker group
-sudo usermod -aG docker $USER
-
-# Reboot to apply
-sudo reboot
-```
-
----
-
-### Logs and Debugging
-
-**View container logs:**
-
-```bash
-# App container
-docker logs -f holly-stream-app
-
-# Triton container
-docker logs -f holly-stream-triton
-
-# Nginx container
-docker logs -f holly-stream-nginx-web-1
-```
-
-**Check container health:**
-
-```bash
-docker ps
-docker inspect holly-stream-app
-docker stats
-```
-
-**Test network connectivity:**
-
-```bash
-# Test RTMP connection
-ffmpeg -i rtmp://localhost:1935/live/stream -frames:v 1 test.jpg
-
-# Test Triton
-curl http://localhost:8000/v2/health/live
-curl http://localhost:8000/v2/models/yolo11
-```
-
----
-
-## Multi-Camera Setup
-
-Start, stop and check every camera from one machine, e.g. a server that a phone shortcut connects to.
-
-holly-stream never starts on its own, not even on boot: a camera runs only between `./run.sh` and `./stop.sh`, so
-cameras can be left powered on and started or stopped remotely. The app's compose restart policy is `"no"` for this
-reason; Docker's other policies all start containers again at boot.
-
-### Configuration
-
-On the control machine, list the cameras in `.env` in the repository root:
-
-```bash
-CAMERA_HOSTNAMES=(rustynano rustypi2 rustypi6)
-# Optional, one per camera: SSH user (default: your SSH config / current user) and clone path under the home
-# directory (default: dev/holly-stream)
-CAMERA_USERS=(user user user)
-CAMERA_REPO_PATHS=(dev/holly-stream dev/holly-stream dev/holly-stream)
-```
-
-**Requirements:**
-
-- SSH key access from the control machine to every camera (no password prompts)
-- holly-stream cloned on each camera, with its own `.env`
-- Cameras can run different branches (`linux`, `raspbian`, `jetson`); each only needs `run.sh`, `stop.sh` and
-  `status.sh` in its clone
-
-### Starting, Stopping and Checking All Cameras
 
 ```bash
 ./run-all-cameras.sh
@@ -1068,54 +185,158 @@ CAMERA_REPO_PATHS=(dev/holly-stream dev/holly-stream dev/holly-stream)
 ./status-all-cameras.sh
 ```
 
-Every camera is reached in parallel, runs its own `run.sh`, `stop.sh` or `status.sh`, and gets one line in the output:
+They reach every camera in parallel and run its `run.sh`, `stop.sh` or `status.sh` in `~/dev/holly-stream` (set
+`CAMERA_REPO_PATHS` for other locations). Any camera whose clone has those scripts can be in the list, so cameras
+running the `raspbian`, `jetson` and `linux` branches can be controlled together.
+
+What the server is receiving:
+
+```bash
+./server/status.sh
+```
 
 ```
-rustynano    ok: started
-rustypi2     unreachable
-rustypi6     ok: streaming  STREAM_NAME=hollystream4/hollyvideostream4 DETECTION=true ROTATION=0
+STREAM                          FROM        ROTATE  DETECTION             RELAYING
+hollystream6/hollyvideostream6  172.20.0.1  0       on, 29.9 fps, 5.1 ms  annotated
 ```
 
-A camera whose `run.sh` is still working after 150 seconds (e.g. building a TensorRT engine) is reported as still
-working and carries on starting; set `CAMERA_COMMAND_TIMEOUT` in `.env` to change the wait.
+### Changing a camera
 
-On a single camera, the same scripts run directly: `./run.sh`, `./stop.sh`, `./status.sh`.
+- **Detection on or off:** set `DETECTION=true` or `false` in `camera/camera.env`, then `./stop.sh && ./run.sh`.
+  The server needs the detector running (`--profile detection`) for boxes to appear.
+- **Move a camera:** change its `STREAM_NAME` and restart it. Only one camera can use a name at a time; a second
+  one is refused until the first disconnects.
+- **Update:** `git pull` on the `linux` branch, then `docker compose -f camera/compose.yml --profile '*' build`
+  and `./stop.sh && ./run.sh`.
+- **Logs:** `docker logs -f holly-camera`.
 
-### Use Cases
+### Watching
 
-- **Multi-angle surveillance**: Monitor different areas
-- **Event streaming**: Multiple camera views of same event
-- **Redundancy**: Backup cameras for critical monitoring
-- **Distributed detection**: Each camera detects different objects
+Directly from the ingest, on your LAN, with `<name>` being a stream name or `annotated/<stream name>`:
 
----
+- HLS in a browser (with audio): `http://<server>:8888/<name>`
+- WebRTC in a browser (sub-second latency, video only): `http://<server>:8889/<name>`
+- VLC: `rtsp://<server>:8554/<name>`
+
+With `RELAY_URL` set, also wherever it points, e.g. your nginx-rtmp's HLS and recordings.
+
+## Configuration
+
+### Camera (`camera/camera.env`)
+
+Apply changes by restarting the camera: `./stop.sh && ./run.sh`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `SERVER_HOST` | required | The server's hostname or LAN IP, `127.0.0.1` on the server itself |
+| `SERVER_PORT` | `8890` | The ingest's SRT port |
+| `STREAM_NAME` | required | Name this camera streams under, e.g. `hollystream6/hollyvideostream6`; relayed to `RELAY_URL` with `{name}` replaced by it |
+| `DETECTION` | `false` | `true` to have the server draw object detections on this camera |
+| `SRT_LATENCY_MS` | `200` | Retransmission window; raise to 500-1000 over WiFi |
+| `CAMERA_DEVICE` | `auto` | The first webcam, a device such as `/dev/video2`, or a name from `ls /dev/v4l/by-id` |
+| `WIDTH` / `HEIGHT` / `FPS` | `1280` / `720` / `30` | Capture size; must be a mode the camera lists (the log prints them if not) |
+| `INPUT_FORMAT` | `auto` | `h264` (sent as is, for cameras with an encoder), `mjpeg` or `yuyv422`; auto picks in that order |
+| `CAMERA_CONTROLS` | `exposure_dynamic_framerate=0` | v4l2 controls, space separated (`v4l2-ctl --list-ctrls`) |
+| `ROTATION` / `HFLIP` | `0` / `false` | `0`, `90`, `180` or `270` degrees clockwise, and mirroring |
+| `ENCODER` | `auto` | `nvenc`, `vaapi` or `x264`; auto tries them in that order |
+| `NVIDIA_GPU` | `0` | Which GPU decodes and encodes, as its index in `nvidia-smi -L` |
+| `BITRATE_KBPS` | `4000` | Camera to server bitrate |
+| `KEYINT_SECONDS` | `2` | Keyframe interval (2 lines up with 2 second HLS segments) |
+| `AUDIO_DEVICE` | `auto` | `auto` (the webcam's own microphone), `none`, or an ALSA device such as `plughw:1,0` |
+| `AUDIO_CHANNELS` / `AUDIO_BITRATE_KBPS` | `1` / `96` | AAC settings |
+| `WATCHDOG_SECONDS` | `15` | Restart the pipeline if no frame is sent for this long |
+
+### Server (`server/.env`)
+
+Apply changes with `docker compose up -d` (plus `--profile detection` if used).
+
+| Variable | Default | Description |
+|---|---|---|
+| `SERVER_LAN_IP` | empty | Server address advertised to WebRTC viewers |
+| `HLS_PORT` | `8888` | Host port for the ingest's HLS player |
+| `RELAY_URL` | empty | Relay every camera here, `{name}` = stream name, e.g. `rtmp://192.168.1.10:1935/{name}` |
+| `MODEL` | `yolo26m_480x640.onnx` | Detector model in `server/models/` |
+| `CLASSES` | `[0, 16]` | Class indexes to draw, `[]` for all (COCO: 0 person, 15 cat, 16 dog) |
+| `CONFIDENCE_THRESHOLD` | `0.35` | Minimum score to draw |
+| `BOX_SMOOTHING` | `0.5` | 0 draws raw boxes; higher is steadier but trails fast motion more |
+| `SANTA_HAT` | `false` | Holiday overlay: detections of `SANTA_HAT_CLASSES` wear a Santa hat instead of a box |
+| `SANTA_HAT_CLASSES` | `[16]` | Classes that get the hat (they must also be in `CLASSES`) |
+| `SANTA_HAT_SCALE` | `0.6` | Hat width as a fraction of the box's shorter side |
+| `BITRATE_KBPS` | `4500` | NVENC bitrate of annotated streams |
+| `SNAPSHOT_INTERVAL` | `0` | Save a clean frame from each detection camera every N seconds to `server/data/snapshots/` |
+| `LOG_STATS` | `false` | Log each detection camera's fps and timings every 10 seconds |
+
+## Choosing a model
+
+COCO val2017 at 640, TensorRT FP16 on a GTX 1660. The detector feeds the model half-resolution frames: a 1280x720
+webcam fills a 480x640 model with no resize (and bars top and bottom), as does a 1280x960 Pi camera.
+
+| Model | Inference | mAP50-95 | Person AP | Person recall @0.3 | Dog AP | Dog recall @0.3 |
+|---|---|---|---|---|---|---|
+| YOLO26n | 2.1 ms | 40.2 | 51.7 | 62% | 65.3 | 74% |
+| YOLO26s | 3.8 ms | 48.0 | 59.6 | 73% | 72.3 | 81% |
+| **YOLO26m** | 8.2 ms | 52.4 | 63.1 | 78% | 76.3 | 86% |
+| YOLO11n | 2.2 ms | 38.9 | 51.8 | 64% | 64.5 | 73% |
+| YOLO11s | 3.9 ms | 46.4 | 57.9 | 72% | 71.0 | 78% |
+| YOLO11m | 8.5 ms | 51.0 | 62.3 | 75% | 74.5 | 84% |
+
+YOLO26 matches YOLO11's speed at each size and is more accurate for people and dogs. Every detection camera runs
+every frame, and they share the GPU's ~33 ms per 30 fps frame: YOLO26m suits one or two detection cameras,
+YOLO26s three or more, or a GPU that is often busy with other work. `server/status.sh` shows each camera's
+inference time. Going over that budget does not fail loudly: it drops frames, which looks like stutter.
+
+## Custom models
+
+Train a YOLO detection model the normal Ultralytics way, on the server's GPU or anywhere else.
+
+1. **Collect images.** With detection on for the cameras you want, set `SNAPSHOT_INTERVAL=60` and restart the
+   detector. Each saves an unannotated frame every minute to `server/data/snapshots/`. Set it back to `0` when you
+   have enough; the files are owned by root, so `sudo chown -R $USER server/data` before labeling.
+2. **Label** in YOLO format with [CVAT](https://www.cvat.ai/), [Label Studio](https://labelstud.io/) or
+   [Roboflow](https://roboflow.com/). Label every class you want detected: fine-tuning replaces the 80 COCO
+   classes, so a model trained only on your dog stops detecting people.
+3. **Train**, starting from pretrained weights at the detector's input size:
+   ```bash
+   yolo detect train data=data.yaml model=yolo26m.pt imgsz=640 epochs=100 device=0
+   ```
+4. **Export and use it:**
+   ```bash
+   ./server/export_model.sh runs/detect/train/weights/best.pt
+   ```
+   It prints the class indexes. Set `MODEL=best_480x640.onnx` and `CLASSES`, then restart the detector.
+
+## Troubleshooting
+
+**`run.sh` says the camera is not streaming.** `docker logs holly-camera` names the problem: a missing setting, no
+webcam, a size the webcam does not offer (the log lists what it does), or the server unreachable (`Connection
+setup failure`: check `SERVER_HOST` and that port 8890/udp is open). It keeps retrying until `./stop.sh`. In
+`docker compose logs holly-ingest` on the server, `someone is already publishing` means another camera already
+uses that stream name.
+
+**Device or resource busy.** Only one program can capture from a webcam. Stop anything else using it, such as the
+old `holly-stream-app` container (`docker rm -f holly-stream-app`).
+
+**The stream stutters in a dark room.** Many webcams halve their frame rate in low light. `CAMERA_CONTROLS` turns
+that off with `exposure_dynamic_framerate=0` (Logitech); the picture gets darker instead. Other cameras name it
+differently: see `v4l2-ctl --list-ctrls`.
+
+**`encoder=x264` although the machine has an NVIDIA GPU.** Install the NVIDIA Container Toolkit so Docker lists
+an `nvidia` runtime (`docker info | grep -i runtime`), then `./stop.sh && ./run.sh`. `ENCODER=nvenc` forces the GPU
+and shows the error if it still fails.
+
+**No sound.** `AUDIO_DEVICE=auto` only uses a microphone on the webcam itself. For another one, find it with
+`arecord -l` and set e.g. `AUDIO_DEVICE=plughw:1,0`.
+
+**Detection is on but `server/status.sh` shows `detector not running`.** Start it with
+`docker compose --profile detection up -d`. Until then the camera streams plain.
+
+**`RELAYING` shows `no`.** `RELAY_URL` is empty, or the relay cannot reach it:
+`docker compose logs holly-ingest | grep relay` shows why. It retries on its own.
+
+**Stutter over WiFi.** Raise `SRT_LATENCY_MS` to 500-1000, or lower `BITRATE_KBPS`.
+
+**Low fps for detection cameras.** If inference time in `server/status.sh` is past ~25 ms, use a smaller model.
 
 ## License
 
-This project is licensed under the MIT License. See LICENSE file for details.
-
----
-
-## Contributing
-
-Contributions are welcome! Please submit pull requests or open issues for bugs and feature requests.
-
----
-
-## Acknowledgments
-
-- [Ultralytics YOLOv8/YOLOv11](https://github.com/ultralytics/ultralytics) - Object detection framework
-- [NVIDIA Triton Inference Server](https://github.com/triton-inference-server/server) - Model serving
-- [FFmpeg](https://ffmpeg.org/) - Video encoding
-- [Nginx RTMP Module](https://github.com/arut/nginx-rtmp-module) - Streaming server
-- [Video.js](https://videojs.com/) - HTML5 video player
-
----
-
-## Support
-
-For questions, issues, or feature requests:
-
-- Open an issue on GitHub
-- Check existing documentation
-- Review troubleshooting section above
+MIT. See [LICENSE](LICENSE).
