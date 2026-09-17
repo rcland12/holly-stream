@@ -12,10 +12,6 @@ server/data/
 *.plan
 # Local settings (see camera/camera.env.example, server/.env.example, .env.example)
 camera/camera.env
-# Leftovers from the Triton and DeepStream versions of this branch
-old_triton/
-deepstream/
-triton/
 
 ### Linux ###
 *~
