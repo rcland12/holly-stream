@@ -20,7 +20,6 @@ if [ "${MAX_PERFORMANCE:-True}" == "True" ]; then
     for cpu in /sys/devices/system/cpu/cpu[0-9]*/cpufreq; do
         [ -w "$cpu/scaling_governor" ] && echo performance > "$cpu/scaling_governor"
     done
-    [ -w /sys/devices/pwm-fan/target_pwm ] && echo "${FAN_PWM:-255}" > /sys/devices/pwm-fan/target_pwm
 fi
 
 exec /opt/holly-stream/holly-stream

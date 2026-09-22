@@ -223,7 +223,7 @@ settings. The main ones:
 | `INFERENCE_INTERVAL` | `0` | Frames skipped between inferences |
 | `TRACKER` | `none` | `iou` or `nvdcf`; keeps boxes moving on skipped frames |
 | `OSD_MODE` | `cpu` | `hw` draws boxes with VIC (no label backgrounds) |
-| `MAX_PERFORMANCE` | `True` | Pins CPU/GPU at max frequency and the fan at full (like `jetson_clocks`) |
+| `MAX_PERFORMANCE` | `True` | Pins CPU/GPU at max frequency (like `jetson_clocks`); does not touch the fan |
 
 ## Monitoring
 
