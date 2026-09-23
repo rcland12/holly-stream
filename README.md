@@ -112,6 +112,7 @@ models/
 nginx/                    local RTMP + HLS server and web player
 run-all-cameras.sh / stop-all-cameras.sh / status-all-cameras.sh   control several cameras over SSH
 all-cameras.sh            what those three run (the same file on every branch)
+remote-action.sh          forced command for the rustyserver api key (the same file on every branch)
 docker-push.sh            push images to Docker Hub
 ```
 
@@ -185,6 +186,53 @@ Cameras on other branches (`raspbian`, `linux`) have the same three scripts, so
 they can share the list. A camera still starting after 150 seconds (e.g.
 building a TensorRT engine) is reported as still working and carries on; set
 `CAMERA_COMMAND_TIMEOUT` to change the wait.
+
+### From a phone, without WireGuard
+
+`api.russellland.dev` (in the rustyserver repo) publishes the same three
+actions behind Cloudflare Access, so an iPhone Shortcut can start a camera -
+or all of them - without connecting to the VPN first:
+
+```
+POST /cameras/run     POST /cameras/stop     GET /cameras/status     GET /cameras/list
+```
+
+Add `?camera=<name>` to any of the first three to act on one camera rather
+than all of them.
+
+It reaches each camera over SSH with its own key, and that key is pinned here
+to `remote-action.sh` as a forced command: it may ask for `run`, `stop` or
+`status`, and cannot open a shell, forward a port or run anything else. `sshd`
+discards whatever the client asked to run and runs the wrapper instead. The
+line it adds to `~/.ssh/authorized_keys` on each camera:
+
+```
+restrict,command="/home/russ/dev/holly-stream/remote-action.sh" ssh-ed25519 AAAA... rustyserver-api-cameras
+```
+
+Install it with `api/ssh/deploy-camera-key.sh` over there, which also copies
+this script to each camera; `--verify` proves the restriction holds on every
+one. Run it again whenever you add a camera.
+
+`remote-action.sh` belongs on **every branch**, like `all-cameras.sh`, and for
+a sharper reason: that `authorized_keys` line names its absolute path, so a
+clone without it leaves that camera unreachable from the api until the deploy
+script runs again. Losing it is safe rather than dangerous - sshd still
+refuses everything, the forced command simply has nothing to run (exit 127),
+so the key gets narrower, never wider.
+
+One trap when committing it, because the deploy script has already left an
+untracked copy on every camera: `git pull` refuses to overwrite an untracked
+file **even when the contents are identical**, and that failure blocks every
+other update to the clone. Remove the copy first, then pull:
+
+```bash
+rm -f ~/dev/holly-stream/remote-action.sh && git pull
+```
+
+A Jetson building a TensorRT engine can take longer than the 150 s the api
+allows; it reports `timeout`, carries on regardless, and `GET /cameras/status`
+a minute later shows it streaming.
 
 ## Watching the stream
 
