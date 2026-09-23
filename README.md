@@ -95,6 +95,7 @@ Design choices:
 run.sh, stop.sh, status.sh  start, stop or check the camera on this machine
 run-all-cameras.sh          start every camera listed in .env over SSH (also stop-all-, status-all-cameras.sh)
 all-cameras.sh              what the *-all-cameras.sh scripts run (the same on every branch)
+remote-action.sh            forced command for the rustyserver api key: run, stop or status, nothing else
 .env.example                the camera list for the *-all-cameras.sh scripts
 camera/                     camera side
   camera.env.example        settings template, copied to camera/camera.env
@@ -188,6 +189,48 @@ nano .env        # CAMERA_HOSTNAMES=(rusty rustypi2 rustynano)
 They reach every camera in parallel and run its `run.sh`, `stop.sh` or `status.sh` in `~/dev/holly-stream` (set
 `CAMERA_REPO_PATHS` for other locations). Any camera whose clone has those scripts can be in the list, so cameras
 running the `raspbian`, `jetson` and `linux` branches can be controlled together.
+
+#### From a phone, without WireGuard
+
+`api.russellland.dev` (in the rustyserver repo) publishes the same three
+actions behind Cloudflare Access, so an iPhone Shortcut can start the cameras
+without connecting to the VPN first:
+
+```
+POST /cameras/run     POST /cameras/stop     GET /cameras/status
+```
+
+It reaches each camera over SSH with its own key, and that key is pinned here
+to `remote-action.sh` as a forced command - it can ask for `run`, `stop` or
+`status` and cannot open a shell, forward a port or run anything else. The
+line it adds to `~/.ssh/authorized_keys` on each camera looks like:
+
+```
+restrict,command="/home/russ/dev/holly-stream/remote-action.sh" ssh-ed25519 AAAA... rustyserver-api-cameras
+```
+
+Install it with `api/ssh/deploy-camera-key.sh` over there, which also copies
+this script to each camera; `--verify` proves the restriction holds. If you
+add a camera, run it again - a camera without the key simply is not reachable
+that way, while `run-all-cameras.sh` keeps working as it always has.
+
+`remote-action.sh` belongs on **every branch**, like `all-cameras.sh`, and for
+a sharper reason: the `authorized_keys` line names its absolute path, so a
+clone that does not carry it leaves that camera unreachable from the api until
+the deploy script is run again. Losing it is safe, not dangerous - sshd still
+refuses everything, the forced command simply has nothing to run (exit 127),
+so the key gets narrower rather than wider.
+
+One trap when committing it, because the deploy script has already put an
+untracked copy on every camera: `git pull` refuses to overwrite an untracked
+file **even when the contents are identical**, and that failure blocks every
+other update to that clone. Remove the copy first, then pull:
+
+```bash
+rm -f ~/dev/holly-stream/remote-action.sh && git pull
+```
+
+Then re-run `--verify` from rustyserver to confirm the restriction still holds.
 
 What the server is receiving:
 
